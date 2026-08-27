@@ -6,11 +6,14 @@ const POSITIONS = ["", "QB", "RB", "WR", "TE", "K", "DEF"] as const;
 export function DraftView({ leagueId }: { leagueId: string }) {
   const drafts = useAsync(() => api.drafts(leagueId), [leagueId]);
   const [draftId, setDraftId] = useState<string | null>(null);
+  const [manualDraftId, setManualDraftId] = useState<string>("");
   const [rosterId, setRosterId] = useState<string>("");
   const [position, setPosition] = useState<string>("");
   const [tick, setTick] = useState(0);
 
-  const activeDraft = draftId ?? drafts.data?.[0]?.draftId ?? null;
+  // A pasted mock-draft id wins; else the dropdown selection; else the first
+  // league draft. The board/recs endpoints accept any draft id.
+  const activeDraft = manualDraftId.trim() || draftId || drafts.data?.[0]?.draftId || null;
   const yourRosterId = rosterId ? Number(rosterId) : undefined;
 
   const board = useAsync(
@@ -39,7 +42,15 @@ export function DraftView({ leagueId }: { leagueId: string }) {
   return (
     <div className="draft">
       <div className="draft-controls">
-        <select value={activeDraft ?? ""} onChange={(e) => setDraftId(e.target.value)}>
+        <select
+          value={manualDraftId.trim() ? "" : (draftId ?? drafts.data?.[0]?.draftId ?? "")}
+          onChange={(e) => {
+            setManualDraftId("");
+            setDraftId(e.target.value);
+          }}
+          disabled={(drafts.data ?? []).length === 0}
+        >
+          {(drafts.data ?? []).length === 0 && <option value="">no league drafts</option>}
           {(drafts.data ?? []).map((d) => (
             <option key={d.draftId} value={d.draftId}>
               {d.season} {d.type} · {d.status} · {d.rounds}×{d.teams}
@@ -49,10 +60,18 @@ export function DraftView({ leagueId }: { leagueId: string }) {
         <input
           type="text"
           inputMode="numeric"
-          placeholder="your roster id"
+          placeholder="or paste mock draft id"
+          value={manualDraftId}
+          onChange={(e) => setManualDraftId(e.target.value.replace(/\D/g, ""))}
+          style={{ width: "11rem" }}
+        />
+        <input
+          type="text"
+          inputMode="numeric"
+          placeholder="your roster id (optional)"
           value={rosterId}
           onChange={(e) => setRosterId(e.target.value.replace(/\D/g, ""))}
-          style={{ width: "7rem" }}
+          style={{ width: "9rem" }}
         />
         <button onClick={() => setTick((n) => n + 1)}>Refresh</button>
         {live && <span className="badge ok">live · auto-refresh</span>}

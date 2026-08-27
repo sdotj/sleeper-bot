@@ -9,7 +9,7 @@
   "sleepbot.config:src/config": "d5c74df1d21f6d96",
   "sleepbot.core:src/core": "c24d98e56e5c8e7a",
   "sleepbot.draft:src/draft": "5e8ae0f1e7e1d29f",
-  "sleepbot.gui:web": "3276f6b07720246d",
+  "sleepbot.gui:web": "d89b6d051c14d948",
   "sleepbot.rules:src/rules": "e1f27515c3a738ec",
   "sleepbot.server:src/index.ts": "bd60acb658c79e45",
   "sleepbot.tools:src/tools": "476376f0ce2beb3b",
