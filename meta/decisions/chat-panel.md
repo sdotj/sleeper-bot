@@ -2,6 +2,7 @@
 id: dec.chat-panel
 nodes:
   - sleepbot.chat
+  - sleepbot.anthropic-api
 status: accepted
 date: 2026-08-26
 revisit_triggers:

@@ -1535,55 +1535,6 @@
       "message": "leaf node `sleepbot.value` declares no contract",
       "node": "sleepbot.value",
       "path": null
-    },
-    {
-      "code": "CAIRN_PROVENANCE_NO_DECISION",
-      "severity": "warning",
-      "message": "node `sleepbot.adapters.interface` has no decision artefact explaining why it exists",
-      "node": "sleepbot.adapters.interface",
-      "path": null
-    },
-    {
-      "code": "CAIRN_PROVENANCE_NO_DECISION",
-      "severity": "warning",
-      "message": "node `sleepbot.adapters.sleeper` has no decision artefact explaining why it exists",
-      "node": "sleepbot.adapters.sleeper",
-      "path": null
-    },
-    {
-      "code": "CAIRN_PROVENANCE_NO_DECISION",
-      "severity": "warning",
-      "message": "node `sleepbot.anthropic-api` has no decision artefact explaining why it exists",
-      "node": "sleepbot.anthropic-api",
-      "path": null
-    },
-    {
-      "code": "CAIRN_PROVENANCE_NO_DECISION",
-      "severity": "warning",
-      "message": "node `sleepbot.config` has no decision artefact explaining why it exists",
-      "node": "sleepbot.config",
-      "path": null
-    },
-    {
-      "code": "CAIRN_PROVENANCE_NO_DECISION",
-      "severity": "warning",
-      "message": "node `sleepbot.server` has no decision artefact explaining why it exists",
-      "node": "sleepbot.server",
-      "path": null
-    },
-    {
-      "code": "CAIRN_PROVENANCE_NO_DECISION",
-      "severity": "warning",
-      "message": "node `sleepbot.sleeper-api` has no decision artefact explaining why it exists",
-      "node": "sleepbot.sleeper-api",
-      "path": null
-    },
-    {
-      "code": "CAIRN_PROVENANCE_NO_DECISION",
-      "severity": "warning",
-      "message": "node `sleepbot.tools` has no decision artefact explaining why it exists",
-      "node": "sleepbot.tools",
-      "path": null
     }
   ]
 }
