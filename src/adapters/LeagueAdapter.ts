@@ -127,6 +127,42 @@ export interface PlayerSearchFilters {
   limit?: number;
 }
 
+/** A draft (mock or real), normalized across platforms. */
+export interface Draft {
+  draftId: string;
+  leagueId: string | null;
+  /** pre_draft | drafting | paused | complete. */
+  status: string;
+  /** snake | linear | auction. */
+  type: string;
+  season: string;
+  rounds: number;
+  teams: number;
+  /** Draft slot (1-based, as a string) -> roster id; populated once set up. */
+  slotToRosterId: Record<string, number>;
+  /** Starter slots by position, e.g. { QB:1, RB:2, WR:2, TE:1, FLEX:1, K:1, DEF:1 }. */
+  starterSlots: Record<string, number>;
+  startTimeMs: number | null;
+  pickTimerSec: number | null;
+}
+
+/** One made draft pick. */
+export interface DraftPick {
+  round: number;
+  /** Overall pick number (1-based). */
+  pickNo: number;
+  /** Draft slot (1-based). */
+  slot: number;
+  rosterId: number | null;
+  playerId: string;
+  playerName: string;
+  position: string;
+  team: string | null;
+  /** user_id of the picker, if known. */
+  pickedBy: string | null;
+  isKeeper: boolean;
+}
+
 /**
  * The contract every platform adapter fulfills. Phase 1 is read-only; write
  * methods (proposeTrade, etc.) arrive in Phase 2 and will follow the
@@ -148,6 +184,16 @@ export interface LeagueAdapter {
   getTransactions(week?: number): Promise<Transaction[]>;
   searchPlayers(query: string, filters?: PlayerSearchFilters): Promise<Player[]>;
   getTrendingPlayers(type: "add" | "drop", limit?: number): Promise<TrendingPlayer[]>;
+
+  // --- drafts (read-only) ---------------------------------------------------
+  /** Drafts discoverable for this league. */
+  listDrafts(): Promise<Draft[]>;
+  /** A draft by id (works for mock drafts not tied to the league). */
+  getDraft(draftId: string): Promise<Draft>;
+  /** Picks made in a draft, with resolved player names. */
+  getDraftPicks(draftId: string): Promise<DraftPick[]>;
+  /** The draftable player pool (fantasy-relevant positions), for recommendations. */
+  getDraftablePlayers(): Promise<Player[]>;
 }
 
 // --- Phase 2: write actions -------------------------------------------------

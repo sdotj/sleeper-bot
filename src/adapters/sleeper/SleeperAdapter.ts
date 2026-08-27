@@ -1,5 +1,7 @@
 import type {
   AddDropPayload,
+  Draft,
+  DraftPick,
   LeagueInfo,
   Matchup,
   Platform,
@@ -170,6 +172,81 @@ export class SleeperAdapter implements WriteableLeagueAdapter {
   async resolvePlayers(playerIds: string[]): Promise<PlayerRef[]> {
     const players = await this.client.getPlayers();
     return this.buildRefs(playerIds, players);
+  }
+
+  // --- drafts (read-only) ---------------------------------------------------
+
+  async listDrafts(): Promise<Draft[]> {
+    const raws = await this.client.getDraftsForLeague(this.leagueId);
+    return raws.map((r) => this.normalizeDraft(r));
+  }
+
+  async getDraft(draftId: string): Promise<Draft> {
+    return this.normalizeDraft(await this.client.getDraft(draftId));
+  }
+
+  async getDraftPicks(draftId: string): Promise<DraftPick[]> {
+    const raws = await this.client.getDraftPicks(draftId);
+    return raws.map((r) => this.normalizeDraftPick(r));
+  }
+
+  async getDraftablePlayers(): Promise<Player[]> {
+    const fantasy = new Set(["QB", "RB", "WR", "TE", "K", "DEF"]);
+    const players = await this.client.getPlayers();
+    const out: Player[] = [];
+    for (const raw of Object.values(players)) {
+      if (raw.position && fantasy.has(raw.position)) out.push(this.normalizePlayer(raw));
+    }
+    return out;
+  }
+
+  private normalizeDraft(r: Record<string, unknown>): Draft {
+    const settings = (r.settings as Record<string, number>) ?? {};
+    const slotToRosterId = (r.slot_to_roster_id as Record<string, number> | null) ?? {};
+    const slotKeys: [string, string][] = [
+      ["QB", "slots_qb"],
+      ["RB", "slots_rb"],
+      ["WR", "slots_wr"],
+      ["TE", "slots_te"],
+      ["FLEX", "slots_flex"],
+      ["SUPER_FLEX", "slots_super_flex"],
+      ["K", "slots_k"],
+      ["DEF", "slots_def"],
+    ];
+    const starterSlots: Record<string, number> = {};
+    for (const [pos, key] of slotKeys) {
+      if (settings[key] > 0) starterSlots[pos] = settings[key];
+    }
+    return {
+      draftId: (r.draft_id as string) ?? "",
+      leagueId: (r.league_id as string | null) ?? null,
+      status: (r.status as string) ?? "unknown",
+      type: (r.type as string) ?? "snake",
+      season: (r.season as string) ?? "",
+      rounds: settings.rounds ?? 0,
+      teams: settings.teams ?? Object.keys(slotToRosterId).length,
+      slotToRosterId,
+      starterSlots,
+      startTimeMs: (r.start_time as number | null) ?? null,
+      pickTimerSec: settings.pick_timer ?? null,
+    };
+  }
+
+  private normalizeDraftPick(r: Record<string, unknown>): DraftPick {
+    const meta = (r.metadata as Record<string, string> | null) ?? {};
+    const name = [meta.first_name, meta.last_name].filter(Boolean).join(" ");
+    return {
+      round: (r.round as number) ?? 0,
+      pickNo: (r.pick_no as number) ?? 0,
+      slot: (r.draft_slot as number) ?? 0,
+      rosterId: (r.roster_id as number | null) ?? null,
+      playerId: (r.player_id as string) ?? "",
+      playerName: name || ((r.player_id as string) ?? ""),
+      position: meta.position ?? "",
+      team: meta.team ?? null,
+      pickedBy: (r.picked_by as string | null) ?? null,
+      isKeeper: Boolean(r.is_keeper),
+    };
   }
 
   // --- writes (unofficial Sleeper private API; see SleeperWriteClient) -------

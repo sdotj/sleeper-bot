@@ -13,6 +13,7 @@ import {
 } from "../value/index.js";
 import { RulesEngine, loadRulesConfig } from "../rules/index.js";
 import { ActionPipeline, PendingStore } from "../actions/index.js";
+import { DraftAssistant } from "../draft/index.js";
 import type { ConfigRegistry } from "../config/loader.js";
 import type { LeagueEntry } from "../config/schema.js";
 
@@ -28,6 +29,7 @@ export interface AppContext {
   adapterFor(leagueId: string): WriteableLeagueAdapter;
   pipeline: ActionPipeline;
   audit: AuditLog;
+  draft: DraftAssistant;
 }
 
 /**
@@ -57,7 +59,8 @@ export async function buildAppContext(config: ConfigRegistry): Promise<AppContex
   };
 
   const pipeline = new ActionPipeline({ rules, audit, pending, value, adapterFor });
-  return { config, adapterFor, pipeline, audit };
+  const draft = new DraftAssistant({ adapterFor, value });
+  return { config, adapterFor, pipeline, audit, draft };
 }
 
 /**

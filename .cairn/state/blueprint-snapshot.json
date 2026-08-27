@@ -111,6 +111,18 @@
         "sleepbot.audit",
         "sleepbot.auth",
         "sleepbot.config",
+        "sleepbot.draft",
+        "sleepbot.value"
+      ]
+    },
+    "sleepbot.draft": {
+      "kind": "Module",
+      "parent": "sleepbot",
+      "paths": [
+        "./src/draft"
+      ],
+      "edges": [
+        "sleepbot.adapters.interface",
         "sleepbot.value"
       ]
     },

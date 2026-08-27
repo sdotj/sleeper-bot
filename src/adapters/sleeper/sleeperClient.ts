@@ -45,6 +45,9 @@ export interface SleeperApi {
   getNflState(): Promise<SleeperNflState>;
   getUserByName(username: string): Promise<Record<string, unknown> | null>;
   getPlayers(): Promise<Record<string, SleeperPlayer>>;
+  getDraftsForLeague(leagueId: string): Promise<Record<string, unknown>[]>;
+  getDraft(draftId: string): Promise<Record<string, unknown>>;
+  getDraftPicks(draftId: string): Promise<Record<string, unknown>[]>;
 }
 
 export class SleeperClient implements SleeperApi {
@@ -108,5 +111,19 @@ export class SleeperClient implements SleeperApi {
     this.playersCache = await this.get<Record<string, SleeperPlayer>>(`/players/nfl`);
     this.playersCacheAt = Date.now();
     return this.playersCache;
+  }
+
+  // --- drafts (public reads; mock and real drafts share these endpoints) -----
+
+  getDraftsForLeague(leagueId: string) {
+    return this.get<Record<string, unknown>[]>(`/league/${leagueId}/drafts`);
+  }
+
+  getDraft(draftId: string) {
+    return this.get<Record<string, unknown>>(`/draft/${draftId}`);
+  }
+
+  getDraftPicks(draftId: string) {
+    return this.get<Record<string, unknown>[]>(`/draft/${draftId}/picks`);
   }
 }

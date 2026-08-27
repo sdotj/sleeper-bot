@@ -69,6 +69,10 @@ System SleepBot "MCP server connecting Claude to fantasy football leagues" id "s
         path "./web"
     }
 
+    Module Draft "Draft board reads + best-available / roster-need recommendations (read-only; you make picks in Sleeper)" id "sleepbot.draft" @drafts {
+        path "./src/draft"
+    }
+
     Actor SleeperApi "Sleeper's HTTP API — public read endpoints, plus the unofficial private write endpoints (session-auth)" id "sleepbot.sleeper-api" @external {
     }
 
@@ -106,3 +110,8 @@ sleepbot.api              -> sleepbot.chat               "hosts the /api/chat en
 sleepbot.chat             -> sleepbot.core               "exposes core operations as Claude tools"
 sleepbot.chat             -> sleepbot.anthropic-api      "runs the Messages API tool-use loop"
 sleepbot.gui              -> sleepbot.api                "calls the local HTTP API"
+
+# Drafts — read-only board + recommendations assistant
+sleepbot.draft            -> sleepbot.adapters.interface  "reads drafts, picks, and the player pool"
+sleepbot.draft            -> sleepbot.value              "ranks available players by value"
+sleepbot.core             -> sleepbot.draft              "exposes draft board + recommendation operations"

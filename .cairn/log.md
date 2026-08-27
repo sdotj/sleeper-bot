@@ -22,3 +22,5 @@
 - archive: phase2-write-actions merged; no operations
 - scan: nodes=18, findings=14, errors=0
 - scan: nodes=18, findings=14, errors=0
+- scan: nodes=19, findings=15, errors=0
+- scan: nodes=19, findings=15, errors=0

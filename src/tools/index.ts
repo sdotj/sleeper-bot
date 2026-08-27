@@ -16,6 +16,9 @@ import { registerProposeAddDrop } from "./proposeAddDrop.js";
 import { registerExecuteAction } from "./executeAction.js";
 import { registerListPendingActions } from "./listPendingActions.js";
 import { registerGetAuthStatus } from "./getAuthStatus.js";
+import { registerGetDrafts } from "./getDrafts.js";
+import { registerGetDraftBoard } from "./getDraftBoard.js";
+import { registerGetDraftRecommendations } from "./getDraftRecommendations.js";
 
 /**
  * Build the tool context (loads config-driven deps) and register every tool
@@ -43,4 +46,9 @@ export async function registerAllTools(server: McpServer, config: ConfigRegistry
   registerExecuteAction(server, ctx);
   registerListPendingActions(server, ctx);
   registerGetAuthStatus(server, ctx);
+
+  // Drafts — read-only assistant
+  registerGetDrafts(server, ctx);
+  registerGetDraftBoard(server, ctx);
+  registerGetDraftRecommendations(server, ctx);
 }

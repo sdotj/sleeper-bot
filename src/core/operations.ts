@@ -82,6 +82,25 @@ export class SleepBotOperations {
     return this.ctx.audit.list(leagueId);
   }
 
+  // --- drafts (read-only assistant) ----------------------------------------
+
+  listDrafts(leagueId: string) {
+    return this.ctx.draft.listDrafts(leagueId);
+  }
+  getDraftPicks(leagueId: string, draftId: string) {
+    return this.ctx.draft.getPicks(leagueId, draftId);
+  }
+  getDraftBoard(leagueId: string, draftId: string, yourRosterId?: number) {
+    return this.ctx.draft.getBoard(leagueId, draftId, { yourRosterId });
+  }
+  getDraftRecommendations(
+    leagueId: string,
+    draftId: string,
+    opts: { rosterId?: number; position?: string; limit?: number } = {},
+  ) {
+    return this.ctx.draft.recommend(leagueId, draftId, opts);
+  }
+
   // --- writes (confirm-by-default via the pipeline) ------------------------
 
   proposeTrade(leagueId: string, payload: TradePayload) {
