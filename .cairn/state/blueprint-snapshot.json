@@ -7,6 +7,18 @@
       "paths": [],
       "edges": []
     },
+    "sleepbot.actions": {
+      "kind": "Module",
+      "parent": "sleepbot",
+      "paths": [
+        "./src/actions"
+      ],
+      "edges": [
+        "sleepbot.adapters.interface",
+        "sleepbot.audit",
+        "sleepbot.rules"
+      ]
+    },
     "sleepbot.adapters": {
       "kind": "Container",
       "parent": "sleepbot",
@@ -29,6 +41,25 @@
       ],
       "edges": [
         "sleepbot.adapters.interface",
+        "sleepbot.auth",
+        "sleepbot.sleeper-api"
+      ]
+    },
+    "sleepbot.audit": {
+      "kind": "Module",
+      "parent": "sleepbot",
+      "paths": [
+        "./src/audit"
+      ],
+      "edges": []
+    },
+    "sleepbot.auth": {
+      "kind": "Module",
+      "parent": "sleepbot",
+      "paths": [
+        "./src/auth"
+      ],
+      "edges": [
         "sleepbot.sleeper-api"
       ]
     },
@@ -47,7 +78,8 @@
         "./src/rules"
       ],
       "edges": [
-        "sleepbot.adapters.interface"
+        "sleepbot.adapters.interface",
+        "sleepbot.value"
       ]
     },
     "sleepbot.server": {
@@ -74,9 +106,18 @@
         "./src/tools"
       ],
       "edges": [
+        "sleepbot.actions",
         "sleepbot.adapters.interface",
         "sleepbot.config"
       ]
+    },
+    "sleepbot.value": {
+      "kind": "Module",
+      "parent": "sleepbot",
+      "paths": [
+        "./src/value"
+      ],
+      "edges": []
     }
   }
 }

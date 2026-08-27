@@ -13,6 +13,18 @@
       "symbols": []
     },
     {
+      "id": "sleepbot.actions",
+      "kind": "module",
+      "name": "Actions",
+      "state": "ghost",
+      "paths": [
+        "./src/actions"
+      ],
+      "files": [],
+      "contracts": [],
+      "symbols": []
+    },
+    {
       "id": "sleepbot.adapters",
       "kind": "container",
       "name": "Adapters",
@@ -181,6 +193,30 @@
           "end_line": 24
         }
       ]
+    },
+    {
+      "id": "sleepbot.audit",
+      "kind": "module",
+      "name": "Audit",
+      "state": "ghost",
+      "paths": [
+        "./src/audit"
+      ],
+      "files": [],
+      "contracts": [],
+      "symbols": []
+    },
+    {
+      "id": "sleepbot.auth",
+      "kind": "module",
+      "name": "Auth",
+      "state": "ghost",
+      "paths": [
+        "./src/auth"
+      ],
+      "files": [],
+      "contracts": [],
+      "symbols": []
     },
     {
       "id": "sleepbot.config",
@@ -437,9 +473,36 @@
           "end_line": 16
         }
       ]
+    },
+    {
+      "id": "sleepbot.value",
+      "kind": "module",
+      "name": "Value",
+      "state": "ghost",
+      "paths": [
+        "./src/value"
+      ],
+      "files": [],
+      "contracts": [],
+      "symbols": []
     }
   ],
   "edges": [
+    {
+      "from": "sleepbot.actions",
+      "to": "sleepbot.rules",
+      "description": "evaluates every proposed action before it is shown"
+    },
+    {
+      "from": "sleepbot.actions",
+      "to": "sleepbot.adapters.interface",
+      "description": "executes a confirmed write via the adapter"
+    },
+    {
+      "from": "sleepbot.actions",
+      "to": "sleepbot.audit",
+      "description": "records every proposed / executed / rejected action"
+    },
     {
       "from": "sleepbot.adapters.sleeper",
       "to": "sleepbot.adapters.interface",
@@ -451,9 +514,24 @@
       "description": "fetches league data over HTTP"
     },
     {
+      "from": "sleepbot.adapters.sleeper",
+      "to": "sleepbot.auth",
+      "description": "obtains a session credential for write calls"
+    },
+    {
+      "from": "sleepbot.auth",
+      "to": "sleepbot.sleeper-api",
+      "description": "authenticates to obtain / refresh a session token"
+    },
+    {
+      "from": "sleepbot.rules",
+      "to": "sleepbot.value",
+      "description": "warn rules consult player value"
+    },
+    {
       "from": "sleepbot.rules",
       "to": "sleepbot.adapters.interface",
-      "description": "evaluates proposed write actions (Phase 2)"
+      "description": "reads league state to evaluate rules (e.g. positional rank)"
     },
     {
       "from": "sleepbot.server",
@@ -474,9 +552,46 @@
       "from": "sleepbot.tools",
       "to": "sleepbot.config",
       "description": "resolves a leagueId label to its config entry"
+    },
+    {
+      "from": "sleepbot.tools",
+      "to": "sleepbot.actions",
+      "description": "proposes write actions and executes confirmed ones"
     }
   ],
   "findings": [
+    {
+      "code": "CAIRN_RECONCILE_LANGUAGE_UNKNOWN",
+      "severity": "warning",
+      "message": "Target `sleepbot.actions` at `src/actions` has unknown language; declare it in targets.",
+      "node": "sleepbot.actions",
+      "target": "sleepbot.actions:src/actions",
+      "path": "src/actions"
+    },
+    {
+      "code": "CAIRN_RECONCILE_LANGUAGE_UNKNOWN",
+      "severity": "warning",
+      "message": "Target `sleepbot.value` at `src/value` has unknown language; declare it in targets.",
+      "node": "sleepbot.value",
+      "target": "sleepbot.value:src/value",
+      "path": "src/value"
+    },
+    {
+      "code": "CAIRN_RECONCILE_LANGUAGE_UNKNOWN",
+      "severity": "warning",
+      "message": "Target `sleepbot.audit` at `src/audit` has unknown language; declare it in targets.",
+      "node": "sleepbot.audit",
+      "target": "sleepbot.audit:src/audit",
+      "path": "src/audit"
+    },
+    {
+      "code": "CAIRN_RECONCILE_LANGUAGE_UNKNOWN",
+      "severity": "warning",
+      "message": "Target `sleepbot.auth` at `src/auth` has unknown language; declare it in targets.",
+      "node": "sleepbot.auth",
+      "target": "sleepbot.auth:src/auth",
+      "path": "src/auth"
+    },
     {
       "code": "CAIRN_CONTRACT_LEAF_UNCOVERED",
       "severity": "warning",
@@ -516,6 +631,48 @@
       "code": "CAIRN_CONTRACT_LEAF_UNCOVERED",
       "severity": "warning",
       "message": "leaf node `sleepbot.tools` declares no contract",
+      "node": "sleepbot.tools",
+      "path": null
+    },
+    {
+      "code": "CAIRN_PROVENANCE_NO_DECISION",
+      "severity": "warning",
+      "message": "node `sleepbot.adapters.interface` has no decision artefact explaining why it exists",
+      "node": "sleepbot.adapters.interface",
+      "path": null
+    },
+    {
+      "code": "CAIRN_PROVENANCE_NO_DECISION",
+      "severity": "warning",
+      "message": "node `sleepbot.adapters.sleeper` has no decision artefact explaining why it exists",
+      "node": "sleepbot.adapters.sleeper",
+      "path": null
+    },
+    {
+      "code": "CAIRN_PROVENANCE_NO_DECISION",
+      "severity": "warning",
+      "message": "node `sleepbot.config` has no decision artefact explaining why it exists",
+      "node": "sleepbot.config",
+      "path": null
+    },
+    {
+      "code": "CAIRN_PROVENANCE_NO_DECISION",
+      "severity": "warning",
+      "message": "node `sleepbot.server` has no decision artefact explaining why it exists",
+      "node": "sleepbot.server",
+      "path": null
+    },
+    {
+      "code": "CAIRN_PROVENANCE_NO_DECISION",
+      "severity": "warning",
+      "message": "node `sleepbot.sleeper-api` has no decision artefact explaining why it exists",
+      "node": "sleepbot.sleeper-api",
+      "path": null
+    },
+    {
+      "code": "CAIRN_PROVENANCE_NO_DECISION",
+      "severity": "warning",
+      "message": "node `sleepbot.tools` has no decision artefact explaining why it exists",
       "node": "sleepbot.tools",
       "path": null
     }

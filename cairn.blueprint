@@ -8,6 +8,7 @@
 
 System SleepBot "MCP server connecting Claude to fantasy football leagues" id "sleepbot" {
     todos "./meta/todos"
+    decisions "./meta/decisions"
 
     Module Server "MCP server entrypoint: registers tools, loads config, serves over stdio" id "sleepbot.server" {
         path "./src/index.ts"
@@ -32,11 +33,27 @@ System SleepBot "MCP server connecting Claude to fantasy football leagues" id "s
         path "./src/tools"
     }
 
-    Module Rules "Rules engine for write actions (Phase 2 — declared now, built later)" id "sleepbot.rules" {
+    Module Rules "Rules engine: block / warn / auto-execute rules evaluated against every proposed write" id "sleepbot.rules" @phase2 {
         path "./src/rules"
     }
 
-    Actor SleeperApi "Sleeper's public read-only HTTP API (api.sleeper.app, no auth)" id "sleepbot.sleeper-api" @external {
+    Module Actions "Proposed-action model, pending-action store, and the confirm-then-execute pipeline" id "sleepbot.actions" @phase2 {
+        path "./src/actions"
+    }
+
+    Module Value "Pluggable player-value provider used by trade-fairness warn rules (generic to start)" id "sleepbot.value" @phase2 {
+        path "./src/value"
+    }
+
+    Module Audit "Persistent, append-only log of proposed / executed / rejected actions" id "sleepbot.audit" @phase2 {
+        path "./src/audit"
+    }
+
+    Module Auth "Sleeper session-credential handling: load, detect expiry, refresh where safe, flag re-auth" id "sleepbot.auth" @phase2 {
+        path "./src/auth"
+    }
+
+    Actor SleeperApi "Sleeper's HTTP API — public read endpoints, plus the unofficial private write endpoints (session-auth)" id "sleepbot.sleeper-api" @external {
     }
 }
 
@@ -47,4 +64,13 @@ sleepbot.tools            -> sleepbot.adapters.interface  "calls platform-agnost
 sleepbot.tools            -> sleepbot.config              "resolves a leagueId label to its config entry"
 sleepbot.adapters.sleeper -> sleepbot.adapters.interface  "implements LeagueAdapter"
 sleepbot.adapters.sleeper -> sleepbot.sleeper-api         "fetches league data over HTTP"
-sleepbot.rules            -> sleepbot.adapters.interface  "evaluates proposed write actions (Phase 2)"
+
+# Phase 2 — write actions, rules, value, audit, auth
+sleepbot.tools            -> sleepbot.actions             "proposes write actions and executes confirmed ones"
+sleepbot.actions          -> sleepbot.rules              "evaluates every proposed action before it is shown"
+sleepbot.actions          -> sleepbot.adapters.interface  "executes a confirmed write via the adapter"
+sleepbot.actions          -> sleepbot.audit              "records every proposed / executed / rejected action"
+sleepbot.rules            -> sleepbot.value              "warn rules consult player value"
+sleepbot.rules            -> sleepbot.adapters.interface  "reads league state to evaluate rules (e.g. positional rank)"
+sleepbot.adapters.sleeper -> sleepbot.auth               "obtains a session credential for write calls"
+sleepbot.auth             -> sleepbot.sleeper-api         "authenticates to obtain / refresh a session token"
