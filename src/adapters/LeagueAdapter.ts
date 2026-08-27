@@ -14,6 +14,14 @@
 /** Which fantasy platform backs a league. */
 export type Platform = "sleeper" | "espn";
 
+/** A resolved player reference: the id joined to a human-readable name. */
+export interface PlayerRef {
+  playerId: string;
+  name: string;
+  position: string;
+  team: string | null;
+}
+
 /** High-level league settings and metadata. */
 export interface LeagueInfo {
   leagueId: string;
@@ -29,20 +37,22 @@ export interface LeagueInfo {
   scoringSettings: Record<string, number>;
 }
 
-/** One team's roster within a league. */
+/** One team's roster within a league, with players resolved to names. */
 export interface Roster {
   rosterId: number;
   /** Owner's display name if resolvable, else the platform user id. */
   ownerName: string;
   ownerId: string;
-  /** Player ids in the starting lineup, in slot order. */
-  starters: string[];
-  /** All rostered player ids (starters + bench + IR). */
-  players: string[];
-  /** Player ids on injured reserve, if the platform exposes them. */
-  reserve: string[];
-  /** Player ids on the taxi squad, if the platform exposes them. */
-  taxi: string[];
+  /** True when this roster belongs to the configured user (see league config). */
+  isYou: boolean;
+  /** Starting lineup, in slot order. */
+  starters: PlayerRef[];
+  /** Rostered players not starting and not on IR/taxi. */
+  bench: PlayerRef[];
+  /** Players on injured reserve, if the platform exposes them. */
+  reserve: PlayerRef[];
+  /** Players on the taxi squad, if the platform exposes them. */
+  taxi: PlayerRef[];
   wins: number;
   losses: number;
   ties: number;
@@ -57,8 +67,10 @@ export interface Matchup {
   matchupId: number;
   rosterId: number;
   ownerName: string;
+  /** True when this side of the matchup is the configured user's team. */
+  isYou: boolean;
   points: number;
-  starters: string[];
+  starters: PlayerRef[];
 }
 
 /** One row of the computed standings table. */
@@ -66,6 +78,8 @@ export interface StandingRow {
   rank: number;
   rosterId: number;
   ownerName: string;
+  /** True when this row is the configured user's team. */
+  isYou: boolean;
   wins: number;
   losses: number;
   ties: number;
@@ -123,6 +137,8 @@ export interface LeagueAdapter {
 
   getLeagueInfo(): Promise<LeagueInfo>;
   getRosters(): Promise<Roster[]>;
+  /** The configured user's roster, or null if no username is set / not found. */
+  getMyRoster(): Promise<Roster | null>;
   /** Defaults to the current NFL week when `week` is omitted. */
   getMatchups(week?: number): Promise<Matchup[]>;
   getStandings(): Promise<StandingRow[]>;

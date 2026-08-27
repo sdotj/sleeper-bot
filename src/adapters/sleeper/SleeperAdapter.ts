@@ -4,29 +4,37 @@ import type {
   Matchup,
   Platform,
   Player,
+  PlayerRef,
   PlayerSearchFilters,
   Roster,
   StandingRow,
   Transaction,
   TrendingPlayer,
 } from "../LeagueAdapter.js";
-import { SleeperClient, type SleeperPlayer } from "./sleeperClient.js";
+import { SleeperClient, type SleeperApi, type SleeperPlayer } from "./sleeperClient.js";
 
 /**
  * SleeperAdapter — maps Sleeper's public API onto the platform-agnostic
  * {@link LeagueAdapter} contract. All Sleeper-specific shapes and quirks are
  * normalized here; nothing above this layer knows it is talking to Sleeper.
  *
- * Read-only (Phase 1). Write methods are intentionally absent until Phase 2,
- * where they will go through Sleeper's unofficial private API and the rules
- * engine.
+ * "Which team is mine?" is resolved from the configured `username`: it is
+ * looked up once to a user_id, and every roster/standing/matchup for that owner
+ * is flagged `isYou`. Player ids are joined to names inline so callers never
+ * have to chain a second lookup.
+ *
+ * Read-only (Phase 1). Write methods are intentionally absent until Phase 2.
  */
 export class SleeperAdapter implements LeagueAdapter {
   readonly platform: Platform = "sleeper";
 
+  /** Memoized resolution of `username` -> user_id (null when unset/unknown). */
+  private selfUserIdPromise?: Promise<string | null>;
+
   constructor(
     private readonly leagueId: string,
-    private readonly client: SleeperClient = new SleeperClient(),
+    private readonly client: SleeperApi = new SleeperClient(),
+    private readonly username?: string,
   ) {}
 
   async getLeagueInfo(): Promise<LeagueInfo> {
@@ -46,27 +54,41 @@ export class SleeperAdapter implements LeagueAdapter {
   }
 
   async getRosters(): Promise<Roster[]> {
-    const [rosters, ownerNames] = await Promise.all([
+    const [rosters, ownerNames, players, selfId] = await Promise.all([
       this.client.getRosters(this.leagueId),
       this.ownerNameMap(),
+      this.client.getPlayers(),
+      this.selfUserId(),
     ]);
-    return rosters.map((r) => this.normalizeRoster(r, ownerNames));
+    return rosters.map((r) => this.normalizeRoster(r, ownerNames, players, selfId));
+  }
+
+  async getMyRoster(): Promise<Roster | null> {
+    if (!this.username) return null;
+    const rosters = await this.getRosters();
+    return rosters.find((r) => r.isYou) ?? null;
   }
 
   async getMatchups(week?: number): Promise<Matchup[]> {
     const wk = week ?? (await this.currentWeek());
-    const [matchups, ownerByRoster] = await Promise.all([
+    const [matchups, ownerByRoster, players, myRosterId] = await Promise.all([
       this.client.getMatchups(this.leagueId, wk),
       this.ownerByRosterMap(),
+      this.client.getPlayers(),
+      this.myRosterId(),
     ]);
-    return matchups.map((m) => ({
-      week: wk,
-      matchupId: (m.matchup_id as number) ?? 0,
-      rosterId: (m.roster_id as number) ?? 0,
-      ownerName: ownerByRoster.get((m.roster_id as number) ?? -1) ?? "unknown",
-      points: (m.points as number) ?? 0,
-      starters: (m.starters as string[]) ?? [],
-    }));
+    return matchups.map((m) => {
+      const rosterId = (m.roster_id as number) ?? 0;
+      return {
+        week: wk,
+        matchupId: (m.matchup_id as number) ?? 0,
+        rosterId,
+        ownerName: ownerByRoster.get(rosterId) ?? "unknown",
+        isYou: myRosterId !== null && rosterId === myRosterId,
+        points: (m.points as number) ?? 0,
+        starters: this.buildRefs((m.starters as string[]) ?? [], players),
+      };
+    });
   }
 
   async getStandings(): Promise<StandingRow[]> {
@@ -78,6 +100,7 @@ export class SleeperAdapter implements LeagueAdapter {
       rank: i + 1,
       rosterId: r.rosterId,
       ownerName: r.ownerName,
+      isYou: r.isYou,
       wins: r.wins,
       losses: r.losses,
       ties: r.ties,
@@ -134,17 +157,31 @@ export class SleeperAdapter implements LeagueAdapter {
 
   // --- internal helpers -----------------------------------------------------
 
-  private normalizeRoster(r: Record<string, unknown>, ownerNames: Map<string, string>): Roster {
+  private normalizeRoster(
+    r: Record<string, unknown>,
+    ownerNames: Map<string, string>,
+    players: Record<string, SleeperPlayer>,
+    selfUserId: string | null,
+  ): Roster {
     const settings = (r.settings as Record<string, number>) ?? {};
     const ownerId = (r.owner_id as string) ?? "";
+    const all = (r.players as string[]) ?? [];
+    const starters = (r.starters as string[]) ?? [];
+    const reserve = (r.reserve as string[] | null) ?? [];
+    const taxi = (r.taxi as string[] | null) ?? [];
+    // Bench = rostered players that are neither starting nor on IR/taxi.
+    const nonBench = new Set([...starters, ...reserve, ...taxi]);
+    const bench = all.filter((id) => !nonBench.has(id));
+
     return {
       rosterId: (r.roster_id as number) ?? 0,
       ownerId,
       ownerName: ownerNames.get(ownerId) ?? ownerId ?? "unknown",
-      starters: (r.starters as string[]) ?? [],
-      players: (r.players as string[]) ?? [],
-      reserve: (r.reserve as string[] | null) ?? [],
-      taxi: (r.taxi as string[] | null) ?? [],
+      isYou: selfUserId !== null && ownerId === selfUserId,
+      starters: this.buildRefs(starters, players),
+      bench: this.buildRefs(bench, players),
+      reserve: this.buildRefs(reserve, players),
+      taxi: this.buildRefs(taxi, players),
       wins: settings.wins ?? 0,
       losses: settings.losses ?? 0,
       ties: settings.ties ?? 0,
@@ -152,6 +189,19 @@ export class SleeperAdapter implements LeagueAdapter {
       pointsFor: this.points(settings.fpts, settings.fpts_decimal),
       pointsAgainst: this.points(settings.fpts_against, settings.fpts_against_decimal),
     };
+  }
+
+  /** Join a list of player ids to name/position/team, preserving order. */
+  private buildRefs(ids: string[], players: Record<string, SleeperPlayer>): PlayerRef[] {
+    return ids.map((id) => {
+      const raw = players[id] ?? { player_id: id };
+      return {
+        playerId: id,
+        name: this.fullName(raw),
+        position: raw.position ?? "",
+        team: raw.team ?? null,
+      };
+    });
   }
 
   private points(whole?: number, decimal?: number): number {
@@ -206,6 +256,27 @@ export class SleeperAdapter implements LeagueAdapter {
       map.set(rosterId, ownerNames.get(ownerId) ?? ownerId ?? "unknown");
     }
     return map;
+  }
+
+  /** Resolve the configured username to a Sleeper user_id, memoized. */
+  private async selfUserId(): Promise<string | null> {
+    if (!this.username) return null;
+    if (!this.selfUserIdPromise) {
+      this.selfUserIdPromise = this.client
+        .getUserByName(this.username)
+        .then((u) => (u?.user_id as string) ?? null)
+        .catch(() => null);
+    }
+    return this.selfUserIdPromise;
+  }
+
+  /** The configured user's roster_id in this league, or null. */
+  private async myRosterId(): Promise<number | null> {
+    const selfId = await this.selfUserId();
+    if (!selfId) return null;
+    const rosters = await this.client.getRosters(this.leagueId);
+    const mine = rosters.find((r) => (r.owner_id as string) === selfId);
+    return mine ? ((mine.roster_id as number) ?? null) : null;
   }
 
   private async currentWeek(): Promise<number> {

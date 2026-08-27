@@ -30,7 +30,24 @@ export interface SleeperNflState {
   leg: number;
 }
 
-export class SleeperClient {
+/**
+ * The slice of Sleeper's API that {@link SleeperAdapter} depends on. Depending
+ * on this interface rather than the concrete client lets tests inject a fake
+ * with canned responses — no network, no ~5MB players download.
+ */
+export interface SleeperApi {
+  getLeague(leagueId: string): Promise<Record<string, unknown>>;
+  getRosters(leagueId: string): Promise<Record<string, unknown>[]>;
+  getUsers(leagueId: string): Promise<Record<string, unknown>[]>;
+  getMatchups(leagueId: string, week: number): Promise<Record<string, unknown>[]>;
+  getTransactions(leagueId: string, week: number): Promise<Record<string, unknown>[]>;
+  getTrending(type: "add" | "drop", limit: number): Promise<{ player_id: string; count: number }[]>;
+  getNflState(): Promise<SleeperNflState>;
+  getUserByName(username: string): Promise<Record<string, unknown> | null>;
+  getPlayers(): Promise<Record<string, SleeperPlayer>>;
+}
+
+export class SleeperClient implements SleeperApi {
   private playersCache: Record<string, SleeperPlayer> | null = null;
   private playersCacheAt = 0;
   /** Sleeper asks for at most one players fetch per day. */

@@ -1,5 +1,6 @@
 import type { LeagueAdapter } from "../adapters/LeagueAdapter.js";
 import { SleeperAdapter } from "../adapters/sleeper/SleeperAdapter.js";
+import { SleeperClient } from "../adapters/sleeper/sleeperClient.js";
 import type { ConfigRegistry } from "../config/loader.js";
 import type { LeagueEntry } from "../config/schema.js";
 
@@ -30,7 +31,11 @@ function buildAdapter(entry: LeagueEntry): LeagueAdapter {
   switch (entry.platform) {
     case "sleeper":
       // schema.superRefine guarantees `sleeper` is present for platform "sleeper".
-      return new SleeperAdapter(entry.sleeper!.leagueId);
+      return new SleeperAdapter(
+        entry.sleeper!.leagueId,
+        new SleeperClient(),
+        entry.sleeper!.username,
+      );
     case "espn":
       throw new Error(
         `league "${entry.id}" uses platform "espn", which arrives in Phase 4. ` +

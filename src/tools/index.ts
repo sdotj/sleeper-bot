@@ -5,6 +5,7 @@ import { registerGetLeagueInfo } from "./getLeagueInfo.js";
 import { registerGetMatchups } from "./getMatchups.js";
 import { registerGetRosters } from "./getRosters.js";
 import { registerGetStandings } from "./getStandings.js";
+import { registerGetMyRoster } from "./getMyRoster.js";
 import { registerGetTransactions } from "./getTransactions.js";
 import { registerGetTrendingPlayers } from "./getTrendingPlayers.js";
 import { registerListLeagues } from "./listLeagues.js";
@@ -20,6 +21,7 @@ export function registerAllTools(server: McpServer, config: ConfigRegistry): voi
   registerListLeagues(server, ctx);
   registerGetLeagueInfo(server, ctx);
   registerGetRosters(server, ctx);
+  registerGetMyRoster(server, ctx);
   registerGetMatchups(server, ctx);
   registerGetStandings(server, ctx);
   registerGetTransactions(server, ctx);
