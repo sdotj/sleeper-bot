@@ -139,6 +139,8 @@ export interface LeagueAdapter {
   getRosters(): Promise<Roster[]>;
   /** The configured user's roster, or null if no username is set / not found. */
   getMyRoster(): Promise<Roster | null>;
+  /** Resolve player ids to name/pos/team refs (used by tools and rules). */
+  resolvePlayers(playerIds: string[]): Promise<PlayerRef[]>;
   /** Defaults to the current NFL week when `week` is omitted. */
   getMatchups(week?: number): Promise<Matchup[]>;
   getStandings(): Promise<StandingRow[]>;
@@ -146,4 +148,57 @@ export interface LeagueAdapter {
   getTransactions(week?: number): Promise<Transaction[]>;
   searchPlayers(query: string, filters?: PlayerSearchFilters): Promise<Player[]>;
   getTrendingPlayers(type: "add" | "drop", limit?: number): Promise<TrendingPlayer[]>;
+}
+
+// --- Phase 2: write actions -------------------------------------------------
+//
+// Write payloads and results are platform-agnostic too, so the pipeline, rules
+// engine, and tools never learn which platform executes a write. `players
+// leaving the user's roster` (traded away or dropped) are what protect rules
+// key on, so each payload makes those explicit.
+
+/** A proposed trade between two rosters. */
+export interface TradePayload {
+  fromRosterId: number;
+  toRosterId: number;
+  /** Player ids leaving `fromRosterId` (i.e. the user gives these up). */
+  sendPlayerIds: string[];
+  /** Player ids coming back to `fromRosterId`. */
+  receivePlayerIds: string[];
+}
+
+/** A waiver claim: add a player, optionally dropping one, with a FAAB bid. */
+export interface WaiverClaimPayload {
+  rosterId: number;
+  addPlayerId: string;
+  dropPlayerId?: string;
+  faabBid?: number;
+}
+
+/** A free-agent add, optionally dropping a player to make room. */
+export interface AddDropPayload {
+  rosterId: number;
+  addPlayerId: string;
+  dropPlayerId?: string;
+}
+
+export type WritePayload = TradePayload | WaiverClaimPayload | AddDropPayload;
+
+/** Outcome of executing a write against a platform. */
+export interface WriteResult {
+  ok: boolean;
+  /** Platform's own id for the created/updated object, when available. */
+  platformRef?: string;
+  message: string;
+}
+
+/**
+ * A platform adapter that can also perform writes. Phase 2 only Sleeper
+ * implements this. All methods follow the confirm-by-default rule at the
+ * pipeline level — the adapter itself just executes an already-confirmed write.
+ */
+export interface WriteableLeagueAdapter extends LeagueAdapter {
+  executeTrade(payload: TradePayload): Promise<WriteResult>;
+  executeWaiverClaim(payload: WaiverClaimPayload): Promise<WriteResult>;
+  executeAddDrop(payload: AddDropPayload): Promise<WriteResult>;
 }

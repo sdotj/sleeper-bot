@@ -6,6 +6,7 @@ generated: true
 
 ## Synced
 - sleepbot
+- sleepbot.actions
 - sleepbot.adapters
 - sleepbot.adapters.interface
 - sleepbot.adapters.sleeper
@@ -19,7 +20,7 @@ generated: true
 - sleepbot.value
 
 ## Ghost
-- sleepbot.actions
+None
 
 ## Orphaned
 None
@@ -29,6 +30,7 @@ None
 None in Phase 1.
 
 ## Findings
+- warning: CAIRN_CONTRACT_LEAF_UNCOVERED leaf node `sleepbot.actions` declares no contract
 - warning: CAIRN_CONTRACT_LEAF_UNCOVERED leaf node `sleepbot.adapters.interface` declares no contract
 - warning: CAIRN_CONTRACT_LEAF_UNCOVERED leaf node `sleepbot.adapters.sleeper` declares no contract
 - warning: CAIRN_CONTRACT_LEAF_UNCOVERED leaf node `sleepbot.audit` declares no contract
@@ -44,4 +46,3 @@ None in Phase 1.
 - warning: CAIRN_PROVENANCE_NO_DECISION node `sleepbot.server` has no decision artefact explaining why it exists
 - warning: CAIRN_PROVENANCE_NO_DECISION node `sleepbot.sleeper-api` has no decision artefact explaining why it exists
 - warning: CAIRN_PROVENANCE_NO_DECISION node `sleepbot.tools` has no decision artefact explaining why it exists
-- warning: CAIRN_RECONCILE_LANGUAGE_UNKNOWN Target `sleepbot.actions` at `src/actions` has unknown language; declare it in targets.

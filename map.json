@@ -16,13 +16,84 @@
       "id": "sleepbot.actions",
       "kind": "module",
       "name": "Actions",
-      "state": "ghost",
+      "state": "synced",
       "paths": [
         "./src/actions"
       ],
-      "files": [],
+      "files": [
+        "src/actions/ProposedAction.ts",
+        "src/actions/actions.test.ts",
+        "src/actions/index.ts",
+        "src/actions/pendingStore.ts",
+        "src/actions/pipeline.ts"
+      ],
       "contracts": [],
-      "symbols": []
+      "symbols": [
+        {
+          "name": "ActionPipeline",
+          "kind": "class",
+          "signature": "export_statement:export class ActionPipeline { constructor(private readonly deps: PipelineDeps) {} async propose(leagueId: string, kind: ActionKind, payload: WritePayload): Promise<ProposedAction> { const adapter = this.deps.adapterFor(leagueId); const verdict = await this.deps.rules.evaluate( kind, payload, await this.ruleContext(adapter, kind, payload), ); const action: ProposedAction = { id: randomUUID(), leagueId, kind, payload, status: verdict.decision === \"block\" ? \"rejected\" : \"pending\", verdict, createdMs: Date.now(), }; if (verdict.decision === \"block\") { await this.deps.audit.record({ actionId: action.id, leagueId, type: \"rejected\", actor: \"rule\", summary: `${kind} blocked: ${verdict.blockedReasons.join(\"; \")}`, detail: verdict, }); return action; // not stored; caller sees the block reasons } await this.deps.audit.record({ actionId: action.id, leagueId, type: \"proposed\", actor: \"user\", summary: `${kind} proposed` + (verdict.warnings.length ? ` (warnings: ${verdict.warnings.join(\"; \")})` : \"\"), detail: action, }); await this.deps.pending.put(action); // Auto mode: it passed every block rule, so execute now (still audited). if (this.deps.rules.mode === \"auto\") { return this.execute(action.id, \"auto\"); } return action; } async execute(actionId: string, actor: \"user\" | \"auto\" = \"user\"): Promise<ProposedAction> { const action = await this.deps.pending.get(actionId); if (!action || action.status !== \"pending\") { throw new Error(`no pending action with id ${actionId}`); } const adapter = this.deps.adapterFor(action.leagueId); // Re-validate at execution time — rules or rosters may have changed. const verdict = await this.deps.rules.evaluate( action.kind, action.payload, await this.ruleContext(adapter, action.kind, action.payload), ); if (verdict.decision === \"block\") { action.status = \"rejected\"; action.verdict = verdict; await this.deps.audit.record({ actionId, leagueId: action.leagueId, type: \"rejected\", actor: \"rule\", summary: `${action.kind} blocked at execution: ${verdict.blockedReasons.join(\"; \")}`, detail: verdict, }); await this.deps.pending.remove(actionId); throw new Error(`action ${actionId} is now blocked: ${verdict.blockedReasons.join(\"; \")}`); } try { const result = await this.dispatch(adapter, action); action.status = \"executed\"; action.result = { platformRef: result.platformRef, message: result.message }; await this.deps.audit.record({ actionId, leagueId: action.leagueId, type: \"executed\", actor, summary: `${action.kind} executed: ${result.message}`, detail: result, }); await this.deps.pending.remove(actionId); return action; } catch (err) { await this.deps.audit.record({ actionId, leagueId: action.leagueId, type: \"failed\", actor, summary: `${action.kind} failed: ${(err as Error).message}`, detail: { error: (err as Error).message }, }); throw err; } } listPending(leagueId?: string): Promise<ProposedAction[]> { return this.deps.pending.list(leagueId); } private dispatch(adapter: WriteableLeagueAdapter, action: ProposedAction): Promise<WriteResult> { switch (action.kind) { case \"trade\": return adapter.executeTrade(action.payload as TradePayload); case \"waiver_claim\": return adapter.executeWaiverClaim(action.payload as WaiverClaimPayload); case \"add_drop\": return adapter.executeAddDrop(action.payload as AddDropPayload); } } private async ruleContext( adapter: WriteableLeagueAdapter, kind: ActionKind, payload: WritePayload, ): Promise<RuleContext> { const ids = this.playersInvolved(kind, payload); const refs = ids.length ? await adapter.resolvePlayers(ids) : []; return { names: new Map(refs.map((r) => [r.playerId, r.name])), value: this.deps.value }; } private playersInvolved(kind: ActionKind, payload: WritePayload): string[] { if (kind === \"trade\") { const t = payload as TradePayload; return [...t.sendPlayerIds, ...t.receivePlayerIds]; } const p = payload as WaiverClaimPayload | AddDropPayload; return [p.addPlayerId, p.dropPlayerId].filter((id): id is string => Boolean(id)); } }",
+          "file": "src/actions/pipeline.ts",
+          "line": 31,
+          "end_line": 171
+        },
+        {
+          "name": "PendingStore",
+          "kind": "class",
+          "signature": "export_statement:export class PendingStore { private static readonly COLLECTION = \"pending\"; constructor(private readonly store: Store) {} async put(action: ProposedAction): Promise<void> { await this.store.put(PendingStore.COLLECTION, action.id, action); } async get(id: string): Promise<ProposedAction | null> { return this.store.get<ProposedAction>(PendingStore.COLLECTION, id); } /** Still-pending actions (optionally for one league), newest first. */ async list(leagueId?: string): Promise<ProposedAction[]> { const all = await this.store.list<ProposedAction>(PendingStore.COLLECTION); return all .filter((a) => a.status === \"pending\" && (!leagueId || a.leagueId === leagueId)) .sort((a, b) => b.createdMs - a.createdMs); } async remove(id: string): Promise<void> { await this.store.delete(PendingStore.COLLECTION, id); } }",
+          "file": "src/actions/pendingStore.ts",
+          "line": 9,
+          "end_line": 33
+        },
+        {
+          "name": "PipelineDeps",
+          "kind": "interface",
+          "signature": "export_statement:export interface PipelineDeps { rules: RulesEngine; audit: AuditLog; pending: PendingStore; value: ValueProvider; adapterFor(leagueId: string): WriteableLeagueAdapter; }",
+          "file": "src/actions/pipeline.ts",
+          "line": 16,
+          "end_line": 22
+        },
+        {
+          "name": "ProposedAction",
+          "kind": "interface",
+          "signature": "export_statement:export interface ProposedAction { id: string; leagueId: string; kind: ActionKind; payload: WritePayload; status: ActionStatus; /** The rule engine's verdict at proposal time (re-checked at execution). */ verdict: RuleVerdict; createdMs: number; /** Populated once executed. */ result?: { platformRef?: string; message: string }; }",
+          "file": "src/actions/ProposedAction.ts",
+          "line": 11,
+          "end_line": 22
+        },
+        {
+          "name": "ActionStatus",
+          "kind": "type",
+          "signature": "export_statement:export type ActionStatus = \"pending\" | \"executed\" | \"rejected\";",
+          "file": "src/actions/ProposedAction.ts",
+          "line": 4,
+          "end_line": 4
+        },
+        {
+          "name": "export { ActionPipeline, type PipelineDeps } from \"./pipeline.js\";",
+          "kind": "other",
+          "signature": "export_statement:export { ActionPipeline, type PipelineDeps } from \"./pipeline.js\";",
+          "file": "src/actions/index.ts",
+          "line": 6,
+          "end_line": 6
+        },
+        {
+          "name": "export { PendingStore } from \"./pendingStore.js\";",
+          "kind": "other",
+          "signature": "export_statement:export { PendingStore } from \"./pendingStore.js\";",
+          "file": "src/actions/index.ts",
+          "line": 5,
+          "end_line": 5
+        },
+        {
+          "name": "export {\n  type ProposedAction,\n  type ActionStatus,\n} from \"./ProposedAction.js\";",
+          "kind": "other",
+          "signature": "export_statement:export { type ProposedAction, type ActionStatus, } from \"./ProposedAction.js\";",
+          "file": "src/actions/index.ts",
+          "line": 1,
+          "end_line": 4
+        }
+      ]
     },
     {
       "id": "sleepbot.adapters",
@@ -48,12 +119,20 @@
       "contracts": [],
       "symbols": [
         {
+          "name": "AddDropPayload",
+          "kind": "interface",
+          "signature": "export_statement:export interface AddDropPayload { rosterId: number; addPlayerId: string; dropPlayerId?: string; }",
+          "file": "src/adapters/LeagueAdapter.ts",
+          "line": 179,
+          "end_line": 183
+        },
+        {
           "name": "LeagueAdapter",
           "kind": "interface",
-          "signature": "export_statement:export interface LeagueAdapter { readonly platform: Platform; getLeagueInfo(): Promise<LeagueInfo>; getRosters(): Promise<Roster[]>; /** The configured user's roster, or null if no username is set / not found. */ getMyRoster(): Promise<Roster | null>; /** Defaults to the current NFL week when `week` is omitted. */ getMatchups(week?: number): Promise<Matchup[]>; getStandings(): Promise<StandingRow[]>; /** Defaults to the current NFL week when `week` is omitted. */ getTransactions(week?: number): Promise<Transaction[]>; searchPlayers(query: string, filters?: PlayerSearchFilters): Promise<Player[]>; getTrendingPlayers(type: \"add\" | \"drop\", limit?: number): Promise<TrendingPlayer[]>; }",
+          "signature": "export_statement:export interface LeagueAdapter { readonly platform: Platform; getLeagueInfo(): Promise<LeagueInfo>; getRosters(): Promise<Roster[]>; /** The configured user's roster, or null if no username is set / not found. */ getMyRoster(): Promise<Roster | null>; /** Resolve player ids to name/pos/team refs (used by tools and rules). */ resolvePlayers(playerIds: string[]): Promise<PlayerRef[]>; /** Defaults to the current NFL week when `week` is omitted. */ getMatchups(week?: number): Promise<Matchup[]>; getStandings(): Promise<StandingRow[]>; /** Defaults to the current NFL week when `week` is omitted. */ getTransactions(week?: number): Promise<Transaction[]>; searchPlayers(query: string, filters?: PlayerSearchFilters): Promise<Player[]>; getTrendingPlayers(type: \"add\" | \"drop\", limit?: number): Promise<TrendingPlayer[]>; }",
           "file": "src/adapters/LeagueAdapter.ts",
           "line": 135,
-          "end_line": 149
+          "end_line": 151
         },
         {
           "name": "LeagueInfo",
@@ -112,6 +191,14 @@
           "end_line": 88
         },
         {
+          "name": "TradePayload",
+          "kind": "interface",
+          "signature": "export_statement:export interface TradePayload { fromRosterId: number; toRosterId: number; /** Player ids leaving `fromRosterId` (i.e. the user gives these up). */ sendPlayerIds: string[]; /** Player ids coming back to `fromRosterId`. */ receivePlayerIds: string[]; }",
+          "file": "src/adapters/LeagueAdapter.ts",
+          "line": 161,
+          "end_line": 168
+        },
+        {
           "name": "Transaction",
           "kind": "interface",
           "signature": "export_statement:export interface Transaction { transactionId: string; type: string; status: string; week: number; /** Player id -> roster id that added the player. */ adds: Record<string, number>; /** Player id -> roster id that dropped the player. */ drops: Record<string, number>; /** Roster ids party to the transaction. */ rosterIds: number[]; /** FAAB bid, when the transaction is a waiver claim. */ faabBid?: number; createdMs: number; }",
@@ -128,12 +215,44 @@
           "end_line": 121
         },
         {
+          "name": "WaiverClaimPayload",
+          "kind": "interface",
+          "signature": "export_statement:export interface WaiverClaimPayload { rosterId: number; addPlayerId: string; dropPlayerId?: string; faabBid?: number; }",
+          "file": "src/adapters/LeagueAdapter.ts",
+          "line": 171,
+          "end_line": 176
+        },
+        {
+          "name": "WriteResult",
+          "kind": "interface",
+          "signature": "export_statement:export interface WriteResult { ok: boolean; /** Platform's own id for the created/updated object, when available. */ platformRef?: string; message: string; }",
+          "file": "src/adapters/LeagueAdapter.ts",
+          "line": 188,
+          "end_line": 193
+        },
+        {
+          "name": "WriteableLeagueAdapter",
+          "kind": "interface",
+          "signature": "export_statement:export interface WriteableLeagueAdapter extends LeagueAdapter { executeTrade(payload: TradePayload): Promise<WriteResult>; executeWaiverClaim(payload: WaiverClaimPayload): Promise<WriteResult>; executeAddDrop(payload: AddDropPayload): Promise<WriteResult>; }",
+          "file": "src/adapters/LeagueAdapter.ts",
+          "line": 200,
+          "end_line": 204
+        },
+        {
           "name": "Platform",
           "kind": "type",
           "signature": "export_statement:export type Platform = \"sleeper\" | \"espn\";",
           "file": "src/adapters/LeagueAdapter.ts",
           "line": 15,
           "end_line": 15
+        },
+        {
+          "name": "WritePayload",
+          "kind": "type",
+          "signature": "export_statement:export type WritePayload = TradePayload | WaiverClaimPayload | AddDropPayload;",
+          "file": "src/adapters/LeagueAdapter.ts",
+          "line": 185,
+          "end_line": 185
         }
       ]
     },
@@ -148,17 +267,18 @@
       "files": [
         "src/adapters/sleeper/SleeperAdapter.test.ts",
         "src/adapters/sleeper/SleeperAdapter.ts",
-        "src/adapters/sleeper/sleeperClient.ts"
+        "src/adapters/sleeper/sleeperClient.ts",
+        "src/adapters/sleeper/sleeperWriteClient.ts"
       ],
       "contracts": [],
       "symbols": [
         {
           "name": "SleeperAdapter",
           "kind": "class",
-          "signature": "export_statement:export class SleeperAdapter implements LeagueAdapter { readonly platform: Platform = \"sleeper\"; /** Memoized resolution of `username` -> user_id (null when unset/unknown). */ private selfUserIdPromise?: Promise<string | null>; constructor( private readonly leagueId: string, private readonly client: SleeperApi = new SleeperClient(), private readonly username?: string, ) {} async getLeagueInfo(): Promise<LeagueInfo> { const l = await this.client.getLeague(this.leagueId); const settings = (l.scoring_settings as Record<string, number>) ?? {}; return { leagueId: this.leagueId, name: (l.name as string) ?? \"\", season: (l.season as string) ?? \"\", platform: this.platform, status: (l.status as string) ?? \"unknown\", totalRosters: (l.total_rosters as number) ?? 0, scoringType: this.inferScoringType(settings), rosterPositions: (l.roster_positions as string[]) ?? [], scoringSettings: settings, }; } async getRosters(): Promise<Roster[]> { const [rosters, ownerNames, players, selfId] = await Promise.all([ this.client.getRosters(this.leagueId), this.ownerNameMap(), this.client.getPlayers(), this.selfUserId(), ]); return rosters.map((r) => this.normalizeRoster(r, ownerNames, players, selfId)); } async getMyRoster(): Promise<Roster | null> { if (!this.username) return null; const rosters = await this.getRosters(); return rosters.find((r) => r.isYou) ?? null; } async getMatchups(week?: number): Promise<Matchup[]> { const wk = week ?? (await this.currentWeek()); const [matchups, ownerByRoster, players, myRosterId] = await Promise.all([ this.client.getMatchups(this.leagueId, wk), this.ownerByRosterMap(), this.client.getPlayers(), this.myRosterId(), ]); return matchups.map((m) => { const rosterId = (m.roster_id as number) ?? 0; return { week: wk, matchupId: (m.matchup_id as number) ?? 0, rosterId, ownerName: ownerByRoster.get(rosterId) ?? \"unknown\", isYou: myRosterId !== null && rosterId === myRosterId, points: (m.points as number) ?? 0, starters: this.buildRefs((m.starters as string[]) ?? [], players), }; }); } async getStandings(): Promise<StandingRow[]> { const rosters = await this.getRosters(); const sorted = [...rosters].sort( (a, b) => b.wins - a.wins || b.pointsFor - a.pointsFor, ); return sorted.map((r, i) => ({ rank: i + 1, rosterId: r.rosterId, ownerName: r.ownerName, isYou: r.isYou, wins: r.wins, losses: r.losses, ties: r.ties, pointsFor: r.pointsFor, pointsAgainst: r.pointsAgainst, })); } async getTransactions(week?: number): Promise<Transaction[]> { const wk = week ?? (await this.currentWeek()); const txns = await this.client.getTransactions(this.leagueId, wk); return txns.map((t) => ({ transactionId: (t.transaction_id as string) ?? \"\", type: (t.type as string) ?? \"unknown\", status: (t.status as string) ?? \"unknown\", week: wk, adds: (t.adds as Record<string, number>) ?? {}, drops: (t.drops as Record<string, number>) ?? {}, rosterIds: (t.roster_ids as number[]) ?? [], faabBid: (t.settings as { waiver_bid?: number } | null)?.waiver_bid, createdMs: (t.created as number) ?? 0, })); } async searchPlayers(query: string, filters: PlayerSearchFilters = {}): Promise<Player[]> { const players = await this.client.getPlayers(); const needle = query.trim().toLowerCase(); const position = filters.position?.toUpperCase(); const team = filters.team?.toUpperCase(); const limit = filters.limit ?? 25; const matches: Player[] = []; for (const raw of Object.values(players)) { const p = this.normalizePlayer(raw); if (needle && !this.fullName(raw).toLowerCase().includes(needle)) continue; if (position && p.position !== position) continue; if (team && (p.team ?? \"\").toUpperCase() !== team) continue; matches.push(p); if (matches.length >= limit) break; } return matches; } async getTrendingPlayers(type: \"add\" | \"drop\", limit = 25): Promise<TrendingPlayer[]> { const [trending, players] = await Promise.all([ this.client.getTrending(type, limit), this.client.getPlayers(), ]); return trending.map((t) => ({ player: this.normalizePlayer(players[t.player_id] ?? { player_id: t.player_id }), count: t.count, })); } // --- internal helpers ----------------------------------------------------- private normalizeRoster( r: Record<string, unknown>, ownerNames: Map<string, string>, players: Record<string, SleeperPlayer>, selfUserId: string | null, ): Roster { const settings = (r.settings as Record<string, number>) ?? {}; const ownerId = (r.owner_id as string) ?? \"\"; const all = (r.players as string[]) ?? []; const starters = (r.starters as string[]) ?? []; const reserve = (r.reserve as string[] | null) ?? []; const taxi = (r.taxi as string[] | null) ?? []; // Bench = rostered players that are neither starting nor on IR/taxi. const nonBench = new Set([...starters, ...reserve, ...taxi]); const bench = all.filter((id) => !nonBench.has(id)); return { rosterId: (r.roster_id as number) ?? 0, ownerId, ownerName: ownerNames.get(ownerId) ?? ownerId ?? \"unknown\", isYou: selfUserId !== null && ownerId === selfUserId, starters: this.buildRefs(starters, players), bench: this.buildRefs(bench, players), reserve: this.buildRefs(reserve, players), taxi: this.buildRefs(taxi, players), wins: settings.wins ?? 0, losses: settings.losses ?? 0, ties: settings.ties ?? 0, // Sleeper stores points as whole + hundredths (fpts + fpts_decimal). pointsFor: this.points(settings.fpts, settings.fpts_decimal), pointsAgainst: this.points(settings.fpts_against, settings.fpts_against_decimal), }; } /** Join a list of player ids to name/position/team, preserving order. */ private buildRefs(ids: string[], players: Record<string, SleeperPlayer>): PlayerRef[] { return ids.map((id) => { const raw = players[id] ?? { player_id: id }; return { playerId: id, name: this.fullName(raw), position: raw.position ?? \"\", team: raw.team ?? null, }; }); } private points(whole?: number, decimal?: number): number { return (whole ?? 0) + (decimal ?? 0) / 100; } private normalizePlayer(raw: SleeperPlayer): Player { return { playerId: raw.player_id, fullName: this.fullName(raw), position: raw.position ?? \"\", team: raw.team ?? null, status: raw.status ?? null, }; } private fullName(raw: SleeperPlayer): string { if (raw.full_name) return raw.full_name; const joined = [raw.first_name, raw.last_name].filter(Boolean).join(\" \"); return joined || raw.player_id; } private inferScoringType(settings: Record<string, number>): string { const ppr = settings.rec ?? 0; if (ppr >= 1) return \"ppr\"; if (ppr > 0) return \"half_ppr\"; return \"standard\"; } /** owner_id (user_id) -> display name. */ private async ownerNameMap(): Promise<Map<string, string>> { const users = await this.client.getUsers(this.leagueId); const map = new Map<string, string>(); for (const u of users) { const id = (u.user_id as string) ?? \"\"; const meta = (u.metadata as { team_name?: string } | null) ?? null; map.set(id, meta?.team_name || (u.display_name as string) || id); } return map; } /** roster_id -> owner display name, joining rosters to users. */ private async ownerByRosterMap(): Promise<Map<number, string>> { const [rosters, ownerNames] = await Promise.all([ this.client.getRosters(this.leagueId), this.ownerNameMap(), ]); const map = new Map<number, string>(); for (const r of rosters) { const rosterId = (r.roster_id as number) ?? 0; const ownerId = (r.owner_id as string) ?? \"\"; map.set(rosterId, ownerNames.get(ownerId) ?? ownerId ?? \"unknown\"); } return map; } /** Resolve the configured username to a Sleeper user_id, memoized. */ private async selfUserId(): Promise<string | null> { if (!this.username) return null; if (!this.selfUserIdPromise) { this.selfUserIdPromise = this.client .getUserByName(this.username) .then((u) => (u?.user_id as string) ?? null) .catch(() => null); } return this.selfUserIdPromise; } /** The configured user's roster_id in this league, or null. */ private async myRosterId(): Promise<number | null> { const selfId = await this.selfUserId(); if (!selfId) return null; const rosters = await this.client.getRosters(this.leagueId); const mine = rosters.find((r) => (r.owner_id as string) === selfId); return mine ? ((mine.roster_id as number) ?? null) : null; } private async currentWeek(): Promise<number> { const state = await this.client.getNflState(); return state.week && state.week > 0 ? state.week : 1; } }",
+          "signature": "export_statement:export class SleeperAdapter implements WriteableLeagueAdapter { readonly platform: Platform = \"sleeper\"; /** Memoized resolution of `username` -> user_id (null when unset/unknown). */ private selfUserIdPromise?: Promise<string | null>; private readonly writeClient?: SleeperWriteClient; constructor( private readonly leagueId: string, private readonly client: SleeperApi = new SleeperClient(), private readonly username?: string, /** Session for the unofficial write API; omit for a read-only adapter. */ session?: SessionProvider, ) { if (session) this.writeClient = new SleeperWriteClient(leagueId, session); } async getLeagueInfo(): Promise<LeagueInfo> { const l = await this.client.getLeague(this.leagueId); const settings = (l.scoring_settings as Record<string, number>) ?? {}; return { leagueId: this.leagueId, name: (l.name as string) ?? \"\", season: (l.season as string) ?? \"\", platform: this.platform, status: (l.status as string) ?? \"unknown\", totalRosters: (l.total_rosters as number) ?? 0, scoringType: this.inferScoringType(settings), rosterPositions: (l.roster_positions as string[]) ?? [], scoringSettings: settings, }; } async getRosters(): Promise<Roster[]> { const [rosters, ownerNames, players, selfId] = await Promise.all([ this.client.getRosters(this.leagueId), this.ownerNameMap(), this.client.getPlayers(), this.selfUserId(), ]); return rosters.map((r) => this.normalizeRoster(r, ownerNames, players, selfId)); } async getMyRoster(): Promise<Roster | null> { if (!this.username) return null; const rosters = await this.getRosters(); return rosters.find((r) => r.isYou) ?? null; } async getMatchups(week?: number): Promise<Matchup[]> { const wk = week ?? (await this.currentWeek()); const [matchups, ownerByRoster, players, myRosterId] = await Promise.all([ this.client.getMatchups(this.leagueId, wk), this.ownerByRosterMap(), this.client.getPlayers(), this.myRosterId(), ]); return matchups.map((m) => { const rosterId = (m.roster_id as number) ?? 0; return { week: wk, matchupId: (m.matchup_id as number) ?? 0, rosterId, ownerName: ownerByRoster.get(rosterId) ?? \"unknown\", isYou: myRosterId !== null && rosterId === myRosterId, points: (m.points as number) ?? 0, starters: this.buildRefs((m.starters as string[]) ?? [], players), }; }); } async getStandings(): Promise<StandingRow[]> { const rosters = await this.getRosters(); const sorted = [...rosters].sort( (a, b) => b.wins - a.wins || b.pointsFor - a.pointsFor, ); return sorted.map((r, i) => ({ rank: i + 1, rosterId: r.rosterId, ownerName: r.ownerName, isYou: r.isYou, wins: r.wins, losses: r.losses, ties: r.ties, pointsFor: r.pointsFor, pointsAgainst: r.pointsAgainst, })); } async getTransactions(week?: number): Promise<Transaction[]> { const wk = week ?? (await this.currentWeek()); const txns = await this.client.getTransactions(this.leagueId, wk); return txns.map((t) => ({ transactionId: (t.transaction_id as string) ?? \"\", type: (t.type as string) ?? \"unknown\", status: (t.status as string) ?? \"unknown\", week: wk, adds: (t.adds as Record<string, number>) ?? {}, drops: (t.drops as Record<string, number>) ?? {}, rosterIds: (t.roster_ids as number[]) ?? [], faabBid: (t.settings as { waiver_bid?: number } | null)?.waiver_bid, createdMs: (t.created as number) ?? 0, })); } async searchPlayers(query: string, filters: PlayerSearchFilters = {}): Promise<Player[]> { const players = await this.client.getPlayers(); const needle = query.trim().toLowerCase(); const position = filters.position?.toUpperCase(); const team = filters.team?.toUpperCase(); const limit = filters.limit ?? 25; const matches: Player[] = []; for (const raw of Object.values(players)) { const p = this.normalizePlayer(raw); if (needle && !this.fullName(raw).toLowerCase().includes(needle)) continue; if (position && p.position !== position) continue; if (team && (p.team ?? \"\").toUpperCase() !== team) continue; matches.push(p); if (matches.length >= limit) break; } return matches; } async getTrendingPlayers(type: \"add\" | \"drop\", limit = 25): Promise<TrendingPlayer[]> { const [trending, players] = await Promise.all([ this.client.getTrending(type, limit), this.client.getPlayers(), ]); return trending.map((t) => ({ player: this.normalizePlayer(players[t.player_id] ?? { player_id: t.player_id }), count: t.count, })); } async resolvePlayers(playerIds: string[]): Promise<PlayerRef[]> { const players = await this.client.getPlayers(); return this.buildRefs(playerIds, players); } // --- writes (unofficial Sleeper private API; see SleeperWriteClient) ------- executeTrade(payload: TradePayload): Promise<WriteResult> { return this.write().executeTrade(payload); } executeWaiverClaim(payload: WaiverClaimPayload): Promise<WriteResult> { return this.write().executeWaiverClaim(payload); } executeAddDrop(payload: AddDropPayload): Promise<WriteResult> { return this.write().executeAddDrop(payload); } /** The write client, or a clear error if this adapter was built read-only. */ private write(): SleeperWriteClient { if (!this.writeClient) { throw new Error( `Sleeper adapter for league ${this.leagueId} was created without a session, ` + `so it is read-only. Configure a session token to enable writes.`, ); } return this.writeClient; } // --- internal helpers ----------------------------------------------------- private normalizeRoster( r: Record<string, unknown>, ownerNames: Map<string, string>, players: Record<string, SleeperPlayer>, selfUserId: string | null, ): Roster { const settings = (r.settings as Record<string, number>) ?? {}; const ownerId = (r.owner_id as string) ?? \"\"; const all = (r.players as string[]) ?? []; const starters = (r.starters as string[]) ?? []; const reserve = (r.reserve as string[] | null) ?? []; const taxi = (r.taxi as string[] | null) ?? []; // Bench = rostered players that are neither starting nor on IR/taxi. const nonBench = new Set([...starters, ...reserve, ...taxi]); const bench = all.filter((id) => !nonBench.has(id)); return { rosterId: (r.roster_id as number) ?? 0, ownerId, ownerName: ownerNames.get(ownerId) ?? ownerId ?? \"unknown\", isYou: selfUserId !== null && ownerId === selfUserId, starters: this.buildRefs(starters, players), bench: this.buildRefs(bench, players), reserve: this.buildRefs(reserve, players), taxi: this.buildRefs(taxi, players), wins: settings.wins ?? 0, losses: settings.losses ?? 0, ties: settings.ties ?? 0, // Sleeper stores points as whole + hundredths (fpts + fpts_decimal). pointsFor: this.points(settings.fpts, settings.fpts_decimal), pointsAgainst: this.points(settings.fpts_against, settings.fpts_against_decimal), }; } /** Join a list of player ids to name/position/team, preserving order. */ private buildRefs(ids: string[], players: Record<string, SleeperPlayer>): PlayerRef[] { return ids.map((id) => { const raw = players[id] ?? { player_id: id }; return { playerId: id, name: this.fullName(raw), position: raw.position ?? \"\", team: raw.team ?? null, }; }); } private points(whole?: number, decimal?: number): number { return (whole ?? 0) + (decimal ?? 0) / 100; } private normalizePlayer(raw: SleeperPlayer): Player { return { playerId: raw.player_id, fullName: this.fullName(raw), position: raw.position ?? \"\", team: raw.team ?? null, status: raw.status ?? null, }; } private fullName(raw: SleeperPlayer): string { if (raw.full_name) return raw.full_name; const joined = [raw.first_name, raw.last_name].filter(Boolean).join(\" \"); return joined || raw.player_id; } private inferScoringType(settings: Record<string, number>): string { const ppr = settings.rec ?? 0; if (ppr >= 1) return \"ppr\"; if (ppr > 0) return \"half_ppr\"; return \"standard\"; } /** owner_id (user_id) -> display name. */ private async ownerNameMap(): Promise<Map<string, string>> { const users = await this.client.getUsers(this.leagueId); const map = new Map<string, string>(); for (const u of users) { const id = (u.user_id as string) ?? \"\"; const meta = (u.metadata as { team_name?: string } | null) ?? null; map.set(id, meta?.team_name || (u.display_name as string) || id); } return map; } /** roster_id -> owner display name, joining rosters to users. */ private async ownerByRosterMap(): Promise<Map<number, string>> { const [rosters, ownerNames] = await Promise.all([ this.client.getRosters(this.leagueId), this.ownerNameMap(), ]); const map = new Map<number, string>(); for (const r of rosters) { const rosterId = (r.roster_id as number) ?? 0; const ownerId = (r.owner_id as string) ?? \"\"; map.set(rosterId, ownerNames.get(ownerId) ?? ownerId ?? \"unknown\"); } return map; } /** Resolve the configured username to a Sleeper user_id, memoized. */ private async selfUserId(): Promise<string | null> { if (!this.username) return null; if (!this.selfUserIdPromise) { this.selfUserIdPromise = this.client .getUserByName(this.username) .then((u) => (u?.user_id as string) ?? null) .catch(() => null); } return this.selfUserIdPromise; } /** The configured user's roster_id in this league, or null. */ private async myRosterId(): Promise<number | null> { const selfId = await this.selfUserId(); if (!selfId) return null; const rosters = await this.client.getRosters(this.leagueId); const mine = rosters.find((r) => (r.owner_id as string) === selfId); return mine ? ((mine.roster_id as number) ?? null) : null; } private async currentWeek(): Promise<number> { const state = await this.client.getNflState(); return state.week && state.week > 0 ? state.week : 1; } }",
           "file": "src/adapters/sleeper/SleeperAdapter.ts",
-          "line": 28,
-          "end_line": 286
+          "line": 34,
+          "end_line": 327
         },
         {
           "name": "SleeperClient",
@@ -167,6 +287,14 @@
           "file": "src/adapters/sleeper/sleeperClient.ts",
           "line": 50,
           "end_line": 112
+        },
+        {
+          "name": "SleeperWriteClient",
+          "kind": "class",
+          "signature": "export_statement:export class SleeperWriteClient { constructor( private readonly leagueId: string, private readonly session: SessionProvider, ) {} executeTrade(payload: TradePayload): Promise<WriteResult> { return this.notYetWired(\"trade\", payload); } executeWaiverClaim(payload: WaiverClaimPayload): Promise<WriteResult> { return this.notYetWired(\"waiver claim\", payload); } executeAddDrop(payload: AddDropPayload): Promise<WriteResult> { return this.notYetWired(\"add/drop\", payload); } /** * Shared path: require a session, then report that the private endpoint isn't * wired yet. Kept in one place so wiring real writes later is a single change. */ private async notYetWired(kind: string, _payload: unknown): Promise<WriteResult> { // Throws NeedsReauthError when no session is configured — the honest state // for a fresh install with no captured token. await this.session.getToken(); throw new Error( `Executing a real Sleeper ${kind} is not yet wired to Sleeper's private ` + `API (Phase 2 follow-up). The proposal was validated, recorded, and stored; ` + `only the final send is pending endpoint integration for league ${this.leagueId}.`, ); } }",
+          "file": "src/adapters/sleeper/sleeperWriteClient.ts",
+          "line": 24,
+          "end_line": 56
         },
         {
           "name": "SleeperApi",
@@ -431,25 +559,116 @@
         "./src/rules"
       ],
       "files": [
-        "src/rules/index.ts"
+        "src/rules/engine.ts",
+        "src/rules/index.ts",
+        "src/rules/rules.test.ts",
+        "src/rules/schema.ts"
       ],
       "contracts": [],
       "symbols": [
         {
-          "name": "evaluateAction",
+          "name": "loadRulesConfig",
           "kind": "function",
-          "signature": "export_statement:export function evaluateAction(): RuleEvaluation { throw new Error(\"rules engine is not implemented until Phase 2\"); }",
-          "file": "src/rules/index.ts",
-          "line": 23,
+          "signature": "export_statement:export async function loadRulesConfig(path?: string): Promise<RulesConfig> { const target = path ?? process.env.SLEEPBOT_RULES ?? \"config/rules.json\"; let raw: string; try { raw = await readFile(target, \"utf8\"); } catch { return rulesConfigSchema.parse({}); // defaults } const parsed = rulesConfigSchema.safeParse(JSON.parse(raw)); if (!parsed.success) { const issues = parsed.error.issues.map((i) => ` - ${i.path.join(\".\")}: ${i.message}`).join(\"\\n\"); throw new Error(`invalid rules config at ${target}:\\n${issues}`); } return parsed.data; }",
+          "file": "src/rules/schema.ts",
+          "line": 47,
+          "end_line": 61
+        },
+        {
+          "name": "RulesEngine",
+          "kind": "class",
+          "signature": "export_statement:export class RulesEngine { constructor(private readonly config: RulesConfig) {} /** Operating mode: \"manual\" (approve each) or \"auto\" (execute if unblocked). */ get mode(): \"manual\" | \"auto\" { return this.config.mode; } async evaluate(kind: ActionKind, payload: WritePayload, ctx: RuleContext): Promise<RuleVerdict> { const blockedReasons: string[] = []; const warnings: string[] = []; for (const outgoing of this.outgoingPlayers(kind, payload)) { for (const rule of this.config.protect) { if (rule.actions.includes(outgoing.via) && this.protectMatches(rule, outgoing.id, ctx)) { const name = ctx.names.get(outgoing.id) ?? outgoing.id; const verb = outgoing.via === \"trade\" ? \"traded away\" : \"dropped\"; blockedReasons.push(`protect rule: ${name} may not be ${verb}`); } } } for (const rule of this.config.warn) { if (rule.type === \"trade_value_diff\" && kind === \"trade\") { const w = await this.tradeValueWarning(payload as TradePayload, rule.thresholdPct, ctx); if (w) warnings.push(w); } } return { decision: blockedReasons.length > 0 ? \"block\" : \"allow\", blockedReasons, warnings, }; } /** Players leaving the user's roster in this action. */ private outgoingPlayers(kind: ActionKind, payload: WritePayload): OutgoingPlayer[] { if (kind === \"trade\") { return (payload as TradePayload).sendPlayerIds.map((id) => ({ id, via: \"trade\" })); } const p = payload as WaiverClaimPayload | AddDropPayload; return p.dropPlayerId ? [{ id: p.dropPlayerId, via: \"drop\" }] : []; } private protectMatches(rule: ProtectRule, playerId: string, ctx: RuleContext): boolean { if (rule.playerId && rule.playerId === playerId) return true; if (rule.playerName) { const name = ctx.names.get(playerId); if (name && name.toLowerCase() === rule.playerName.toLowerCase()) return true; } return false; } private async tradeValueWarning( trade: TradePayload, thresholdPct: number, ctx: RuleContext, ): Promise<string | null> { const sent = await this.sumValue(trade.sendPlayerIds, ctx.value); const received = await this.sumValue(trade.receivePlayerIds, ctx.value); const max = Math.max(sent, received); if (max === 0) return null; const diffPct = (Math.abs(sent - received) / max) * 100; if (diffPct < thresholdPct) return null; const dir = sent > received ? \"you give up more value\" : \"you receive more value\"; return `trade value differential ~${diffPct.toFixed(0)}% (${dir}); warn threshold ${thresholdPct}%`; } private async sumValue(playerIds: string[], value: ValueProvider): Promise<number> { const values = await value.getValues(playerIds); return playerIds.reduce((sum, id) => sum + (values.get(id) ?? 0), 0); } }",
+          "file": "src/rules/engine.ts",
+          "line": 39,
+          "end_line": 112
+        },
+        {
+          "name": "export const protectRuleSchema = z\n  .object({\n    /** Match by platform player id (exact) ... */\n    playerId: z.string().optional(),\n    /** ... or by display name (case-insensitive), e.g. \"Ja'Marr Chase\". */\n    playerName: z.string().optional(),\n    /** Which movements are forbidden. Default: both. */\n    actions: z.array(z.enum([\"trade\", \"drop\"])).default([\"trade\", \"drop\"]),\n  })\n  .refine((r) => r.playerId || r.playerName, {\n    message: \"a protect rule needs either playerId or playerName\",\n  });",
+          "kind": "variable",
+          "signature": "export_statement:export const protectRuleSchema = z .object({ /** Match by platform player id (exact) ... */ playerId: z.string().optional(), /** ... or by display name (case-insensitive), e.g. \"Ja'Marr Chase\". */ playerName: z.string().optional(), /** Which movements are forbidden. Default: both. */ actions: z.array(z.enum([\"trade\", \"drop\"])).default([\"trade\", \"drop\"]), }) .refine((r) => r.playerId || r.playerName, { message: \"a protect rule needs either playerId or playerName\", });",
+          "file": "src/rules/schema.ts",
+          "line": 11,
+          "end_line": 22
+        },
+        {
+          "name": "export const rulesConfigSchema = z.object({\n  /** manual = approve every action; auto = execute anything that passes blocks. */\n  mode: z.enum([\"manual\", \"auto\"]).default(\"manual\"),\n  protect: z.array(protectRuleSchema).default([]),\n  warn: z.array(warnRuleSchema).default([]),\n});",
+          "kind": "variable",
+          "signature": "export_statement:export const rulesConfigSchema = z.object({ /** manual = approve every action; auto = execute anything that passes blocks. */ mode: z.enum([\"manual\", \"auto\"]).default(\"manual\"), protect: z.array(protectRuleSchema).default([]), warn: z.array(warnRuleSchema).default([]), });",
+          "file": "src/rules/schema.ts",
+          "line": 31,
+          "end_line": 36
+        },
+        {
+          "name": "export const warnRuleSchema = z.object({\n  type: z.literal(\"trade_value_diff\"),\n  /** Warn when |sent - received| / max exceeds this percentage. */\n  thresholdPct: z.number().min(0).max(100),\n});",
+          "kind": "variable",
+          "signature": "export_statement:export const warnRuleSchema = z.object({ type: z.literal(\"trade_value_diff\"), /** Warn when |sent - received| / max exceeds this percentage. */ thresholdPct: z.number().min(0).max(100), });",
+          "file": "src/rules/schema.ts",
+          "line": 25,
+          "end_line": 29
+        },
+        {
+          "name": "RuleContext",
+          "kind": "interface",
+          "signature": "export_statement:export interface RuleContext { /** playerId -> display name, for name-based protect rules and messages. */ names: Map<string, string>; value: ValueProvider; }",
+          "file": "src/rules/engine.ts",
+          "line": 21,
           "end_line": 25
         },
         {
-          "name": "RuleEvaluation",
+          "name": "RuleVerdict",
           "kind": "interface",
-          "signature": "export_statement:export interface RuleEvaluation { decision: \"allow\" | \"warn\" | \"block\"; reasons: string[]; }",
+          "signature": "export_statement:export interface RuleVerdict { decision: \"allow\" | \"block\"; blockedReasons: string[]; warnings: string[]; }",
+          "file": "src/rules/engine.ts",
+          "line": 14,
+          "end_line": 18
+        },
+        {
+          "name": "ActionKind",
+          "kind": "type",
+          "signature": "export_statement:export type ActionKind = \"trade\" | \"waiver_claim\" | \"add_drop\";",
+          "file": "src/rules/engine.ts",
+          "line": 11,
+          "end_line": 11
+        },
+        {
+          "name": "ProtectRule",
+          "kind": "type",
+          "signature": "export_statement:export type ProtectRule = z.infer<typeof protectRuleSchema>;",
+          "file": "src/rules/schema.ts",
+          "line": 38,
+          "end_line": 38
+        },
+        {
+          "name": "RulesConfig",
+          "kind": "type",
+          "signature": "export_statement:export type RulesConfig = z.infer<typeof rulesConfigSchema>;",
+          "file": "src/rules/schema.ts",
+          "line": 40,
+          "end_line": 40
+        },
+        {
+          "name": "WarnRule",
+          "kind": "type",
+          "signature": "export_statement:export type WarnRule = z.infer<typeof warnRuleSchema>;",
+          "file": "src/rules/schema.ts",
+          "line": 39,
+          "end_line": 39
+        },
+        {
+          "name": "export {\n  RulesEngine,\n  type ActionKind,\n  type RuleVerdict,\n  type RuleContext,\n} from \"./engine.js\";",
+          "kind": "other",
+          "signature": "export_statement:export { RulesEngine, type ActionKind, type RuleVerdict, type RuleContext, } from \"./engine.js\";",
           "file": "src/rules/index.ts",
-          "line": 17,
-          "end_line": 20
+          "line": 6,
+          "end_line": 11
+        },
+        {
+          "name": "export {\n  loadRulesConfig,\n  rulesConfigSchema,\n  type RulesConfig,\n  type ProtectRule,\n  type WarnRule,\n} from \"./schema.js\";",
+          "kind": "other",
+          "signature": "export_statement:export { loadRulesConfig, rulesConfigSchema, type RulesConfig, type ProtectRule, type WarnRule, } from \"./schema.js\";",
+          "file": "src/rules/index.ts",
+          "line": 12,
+          "end_line": 18
         }
       ]
     },
@@ -487,6 +706,7 @@
       ],
       "files": [
         "src/tools/_shared.ts",
+        "src/tools/executeAction.ts",
         "src/tools/getLeagueInfo.ts",
         "src/tools/getMatchups.ts",
         "src/tools/getMyRoster.ts",
@@ -496,41 +716,61 @@
         "src/tools/getTrendingPlayers.ts",
         "src/tools/index.ts",
         "src/tools/listLeagues.ts",
+        "src/tools/listPendingActions.ts",
+        "src/tools/proposeAddDrop.ts",
+        "src/tools/proposeTrade.ts",
+        "src/tools/proposeWaiverClaim.ts",
         "src/tools/searchPlayers.ts"
       ],
       "contracts": [],
       "symbols": [
         {
+          "name": "buildToolContext",
+          "kind": "function",
+          "signature": "export_statement:export async function buildToolContext(config: ConfigRegistry): Promise<ToolContext> { const store = new JsonFileStore(); const audit = new AuditLog(store); const pending = new PendingStore(store); const rules = new RulesEngine(await loadRulesConfig()); const value = await GenericValueProvider.fromFile( process.env.SLEEPBOT_RANKINGS ?? \"config/rankings.json\", ); const adapters = new Map<string, WriteableLeagueAdapter>(); const adapterFor = (leagueId: string): WriteableLeagueAdapter => { let adapter = adapters.get(leagueId); if (!adapter) { adapter = buildAdapter(config.get(leagueId)); adapters.set(leagueId, adapter); } return adapter; }; const pipeline = new ActionPipeline({ rules, audit, pending, value, adapterFor }); return { config, adapterFor, pipeline }; }",
+          "file": "src/tools/_shared.ts",
+          "line": 29,
+          "end_line": 50
+        },
+        {
+          "name": "registerAllTools",
+          "kind": "function",
+          "signature": "export_statement:export async function registerAllTools(server: McpServer, config: ConfigRegistry): Promise<void> { const ctx: ToolContext = await buildToolContext(config); // Phase 1 — read-only registerListLeagues(server, ctx); registerGetLeagueInfo(server, ctx); registerGetRosters(server, ctx); registerGetMyRoster(server, ctx); registerGetMatchups(server, ctx); registerGetStandings(server, ctx); registerGetTransactions(server, ctx); registerSearchPlayers(server, ctx); registerGetTrendingPlayers(server, ctx); // Phase 2 — write actions (confirm-by-default) registerProposeTrade(server, ctx); registerProposeWaiverClaim(server, ctx); registerProposeAddDrop(server, ctx); registerExecuteAction(server, ctx); registerListPendingActions(server, ctx); }",
+          "file": "src/tools/index.ts",
+          "line": 24,
+          "end_line": 44
+        },
+        {
           "name": "guard",
           "kind": "function",
           "signature": "export_statement:export function guard<Args>(handler: (args: Args) => Promise<unknown>) { return async (args: Args) => { try { return jsonResult(await handler(args)); } catch (err) { return { isError: true as const, content: [{ type: \"text\" as const, text: `Error: ${(err as Error).message}` }], }; } }; }",
           "file": "src/tools/_shared.ts",
-          "line": 60,
-          "end_line": 71
+          "line": 108,
+          "end_line": 119
         },
         {
           "name": "jsonResult",
           "kind": "function",
           "signature": "export_statement:export function jsonResult(data: unknown) { return { content: [{ type: \"text\" as const, text: JSON.stringify(data, null, 2) }] }; }",
           "file": "src/tools/_shared.ts",
-          "line": 52,
-          "end_line": 54
+          "line": 100,
+          "end_line": 102
         },
         {
-          "name": "makeToolContext",
+          "name": "proposalOutcome",
           "kind": "function",
-          "signature": "export_statement:export function makeToolContext(config: ConfigRegistry): ToolContext { return { config, adapterFor(leagueId: string): LeagueAdapter { const entry = config.get(leagueId); return buildAdapter(entry); }, }; }",
+          "signature": "export_statement:export function proposalOutcome(action: ProposedAction) { if (action.status === \"rejected\") { return { ...action, note: `BLOCKED by a rule — nothing was stored or sent. ${action.verdict.blockedReasons.join(\"; \")}`, }; } const warn = action.verdict.warnings.length ? ` Warnings: ${action.verdict.warnings.join(\"; \")}.` : \"\"; return { ...action, note: `Proposed as a DRAFT — nothing has been sent. To send it, call ` + `execute_action with actionId \"${action.id}\".${warn}`, }; }",
           "file": "src/tools/_shared.ts",
-          "line": 19,
-          "end_line": 27
+          "line": 81,
+          "end_line": 97
         },
         {
-          "name": "registerAllTools",
+          "name": "registerExecuteAction",
           "kind": "function",
-          "signature": "export_statement:export function registerAllTools(server: McpServer, config: ConfigRegistry): void { const ctx = makeToolContext(config); registerListLeagues(server, ctx); registerGetLeagueInfo(server, ctx); registerGetRosters(server, ctx); registerGetMyRoster(server, ctx); registerGetMatchups(server, ctx); registerGetStandings(server, ctx); registerGetTransactions(server, ctx); registerSearchPlayers(server, ctx); registerGetTrendingPlayers(server, ctx); }",
-          "file": "src/tools/index.ts",
-          "line": 18,
-          "end_line": 30
+          "signature": "export_statement:export function registerExecuteAction(server: McpServer, ctx: ToolContext): void { server.registerTool( \"execute_action\", { title: \"Execute a proposed action\", description: \"Send a previously-proposed pending action (by actionId from a propose_* tool or \" + \"list_pending_actions). This is the explicit confirmation step — it re-checks the \" + \"rules, then performs the write. Only call this when the user has confirmed they \" + \"want the action sent.\", inputSchema: { actionId: z.string().describe(\"The actionId of a pending action to send.\"), }, }, guard(async ({ actionId }: { actionId: string }) => ctx.pipeline.execute(actionId, \"user\")), ); }",
+          "file": "src/tools/executeAction.ts",
+          "line": 6,
+          "end_line": 22
         },
         {
           "name": "registerGetLeagueInfo",
@@ -597,6 +837,38 @@
           "end_line": 25
         },
         {
+          "name": "registerListPendingActions",
+          "kind": "function",
+          "signature": "export_statement:export function registerListPendingActions(server: McpServer, ctx: ToolContext): void { server.registerTool( \"list_pending_actions\", { title: \"List pending actions\", description: \"List proposed actions that are still awaiting confirmation (drafts not yet sent), \" + \"newest first. Optionally filter to one league. Each includes its actionId for \" + \"use with execute_action.\", inputSchema: { leagueId: z.string().optional().describe(\"Optional league label to filter by.\"), }, }, guard(async ({ leagueId }: { leagueId?: string }) => ctx.pipeline.listPending(leagueId)), ); }",
+          "file": "src/tools/listPendingActions.ts",
+          "line": 6,
+          "end_line": 21
+        },
+        {
+          "name": "registerProposeAddDrop",
+          "kind": "function",
+          "signature": "export_statement:export function registerProposeAddDrop(server: McpServer, ctx: ToolContext): void { server.registerTool( \"propose_add_drop\", { title: \"Propose an add/drop\", description: \"Draft a free-agent add (optionally dropping a player to make room) and run it \" + \"through the rules engine. Returns a DRAFT with an actionId — it does NOT send \" + \"the move. Call execute_action with the actionId to send an allowed draft.\", inputSchema: { leagueId: z.string().describe(\"Your league label from list_leagues.\"), rosterId: z.number().int().describe(\"Your roster id.\"), addPlayerId: z.string().describe(\"Player id to add.\"), dropPlayerId: z.string().optional().describe(\"Player id to drop, if any.\"), }, }, guard( async (args: { leagueId: string; rosterId: number; addPlayerId: string; dropPlayerId?: string; }) => { const { leagueId, ...payload } = args; return proposalOutcome(await ctx.pipeline.propose(leagueId, \"add_drop\", payload)); }, ), ); }",
+          "file": "src/tools/proposeAddDrop.ts",
+          "line": 6,
+          "end_line": 34
+        },
+        {
+          "name": "registerProposeTrade",
+          "kind": "function",
+          "signature": "export_statement:export function registerProposeTrade(server: McpServer, ctx: ToolContext): void { server.registerTool( \"propose_trade\", { title: \"Propose a trade\", description: \"Draft a trade between two rosters and run it through the rules engine. Returns \" + \"a DRAFT with an actionId and any rule verdict/warnings — it does NOT send the \" + \"trade. If a protect rule blocks it, it is rejected and not stored. To actually \" + \"send an allowed draft, call execute_action with its actionId.\", inputSchema: { leagueId: z.string().describe(\"Your league label from list_leagues.\"), fromRosterId: z.number().int().describe(\"Your roster id (the side giving sendPlayerIds).\"), toRosterId: z.number().int().describe(\"The other roster id.\"), sendPlayerIds: z.array(z.string()).describe(\"Player ids you send away.\"), receivePlayerIds: z.array(z.string()).describe(\"Player ids you receive.\"), }, }, guard( async (args: { leagueId: string; fromRosterId: number; toRosterId: number; sendPlayerIds: string[]; receivePlayerIds: string[]; }) => { const { leagueId, ...payload } = args; return proposalOutcome(await ctx.pipeline.propose(leagueId, \"trade\", payload)); }, ), ); }",
+          "file": "src/tools/proposeTrade.ts",
+          "line": 6,
+          "end_line": 37
+        },
+        {
+          "name": "registerProposeWaiverClaim",
+          "kind": "function",
+          "signature": "export_statement:export function registerProposeWaiverClaim(server: McpServer, ctx: ToolContext): void { server.registerTool( \"propose_waiver_claim\", { title: \"Propose a waiver claim\", description: \"Draft a waiver claim (add a player, optionally dropping one, with a FAAB bid) and \" + \"run it through the rules engine. Returns a DRAFT with an actionId — it does NOT \" + \"submit the claim. Call execute_action with the actionId to submit an allowed draft.\", inputSchema: { leagueId: z.string().describe(\"Your league label from list_leagues.\"), rosterId: z.number().int().describe(\"Your roster id.\"), addPlayerId: z.string().describe(\"Player id to claim.\"), dropPlayerId: z.string().optional().describe(\"Player id to drop, if any.\"), faabBid: z.number().int().min(0).optional().describe(\"FAAB bid amount, if applicable.\"), }, }, guard( async (args: { leagueId: string; rosterId: number; addPlayerId: string; dropPlayerId?: string; faabBid?: number; }) => { const { leagueId, ...payload } = args; return proposalOutcome(await ctx.pipeline.propose(leagueId, \"waiver_claim\", payload)); }, ), ); }",
+          "file": "src/tools/proposeWaiverClaim.ts",
+          "line": 6,
+          "end_line": 36
+        },
+        {
           "name": "registerSearchPlayers",
           "kind": "function",
           "signature": "export_statement:export function registerSearchPlayers(server: McpServer, ctx: ToolContext): void { server.registerTool( \"search_players\", { title: \"Search players\", description: \"Search NFL players by (partial) name, optionally filtered by position or team. \" + \"Returns playerId, name, position, team, and status. Use this to turn the \" + \"player_id strings on rosters and matchups into readable players.\", inputSchema: { leagueId: z .string() .describe(\"Your league label from list_leagues (selects the platform).\"), query: z.string().describe(\"Full or partial player name, e.g. 'mahomes'.\"), position: z .string() .optional() .describe(\"Filter by position, e.g. 'QB', 'RB', 'WR', 'TE', 'K', 'DEF'.\"), team: z.string().optional().describe(\"Filter by NFL team abbreviation, e.g. 'KC'.\"), limit: z .number() .int() .min(1) .max(100) .optional() .describe(\"Max results (default 25).\"), }, }, guard( async ({ leagueId, query, position, team, limit, }: { leagueId: string; query: string; position?: string; team?: string; limit?: number; }) => ctx.adapterFor(leagueId).searchPlayers(query, { position, team, limit }), ), ); }",
@@ -607,10 +879,10 @@
         {
           "name": "ToolContext",
           "kind": "interface",
-          "signature": "export_statement:export interface ToolContext { config: ConfigRegistry; adapterFor(leagueId: string): LeagueAdapter; }",
+          "signature": "export_statement:export interface ToolContext { config: ConfigRegistry; adapterFor(leagueId: string): WriteableLeagueAdapter; pipeline: ActionPipeline; }",
           "file": "src/tools/_shared.ts",
-          "line": 13,
-          "end_line": 16
+          "line": 17,
+          "end_line": 21
         }
       ]
     },
@@ -739,12 +1011,11 @@
   ],
   "findings": [
     {
-      "code": "CAIRN_RECONCILE_LANGUAGE_UNKNOWN",
+      "code": "CAIRN_CONTRACT_LEAF_UNCOVERED",
       "severity": "warning",
-      "message": "Target `sleepbot.actions` at `src/actions` has unknown language; declare it in targets.",
+      "message": "leaf node `sleepbot.actions` declares no contract",
       "node": "sleepbot.actions",
-      "target": "sleepbot.actions:src/actions",
-      "path": "src/actions"
+      "path": null
     },
     {
       "code": "CAIRN_CONTRACT_LEAF_UNCOVERED",

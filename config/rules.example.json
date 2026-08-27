@@ -1,0 +1,15 @@
+{
+  "mode": "manual",
+  "protect": [
+    {
+      "playerName": "Ja'Marr Chase",
+      "actions": ["trade", "drop"]
+    }
+  ],
+  "warn": [
+    {
+      "type": "trade_value_diff",
+      "thresholdPct": 20
+    }
+  ]
+}

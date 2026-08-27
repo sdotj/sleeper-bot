@@ -1,5 +1,5 @@
 import type {
-  LeagueAdapter,
+  AddDropPayload,
   LeagueInfo,
   Matchup,
   Platform,
@@ -8,10 +8,16 @@ import type {
   PlayerSearchFilters,
   Roster,
   StandingRow,
+  TradePayload,
   Transaction,
   TrendingPlayer,
+  WaiverClaimPayload,
+  WriteableLeagueAdapter,
+  WriteResult,
 } from "../LeagueAdapter.js";
+import type { SessionProvider } from "../../auth/SessionProvider.js";
 import { SleeperClient, type SleeperApi, type SleeperPlayer } from "./sleeperClient.js";
+import { SleeperWriteClient } from "./sleeperWriteClient.js";
 
 /**
  * SleeperAdapter — maps Sleeper's public API onto the platform-agnostic
@@ -25,17 +31,22 @@ import { SleeperClient, type SleeperApi, type SleeperPlayer } from "./sleeperCli
  *
  * Read-only (Phase 1). Write methods are intentionally absent until Phase 2.
  */
-export class SleeperAdapter implements LeagueAdapter {
+export class SleeperAdapter implements WriteableLeagueAdapter {
   readonly platform: Platform = "sleeper";
 
   /** Memoized resolution of `username` -> user_id (null when unset/unknown). */
   private selfUserIdPromise?: Promise<string | null>;
+  private readonly writeClient?: SleeperWriteClient;
 
   constructor(
     private readonly leagueId: string,
     private readonly client: SleeperApi = new SleeperClient(),
     private readonly username?: string,
-  ) {}
+    /** Session for the unofficial write API; omit for a read-only adapter. */
+    session?: SessionProvider,
+  ) {
+    if (session) this.writeClient = new SleeperWriteClient(leagueId, session);
+  }
 
   async getLeagueInfo(): Promise<LeagueInfo> {
     const l = await this.client.getLeague(this.leagueId);
@@ -153,6 +164,36 @@ export class SleeperAdapter implements LeagueAdapter {
       player: this.normalizePlayer(players[t.player_id] ?? { player_id: t.player_id }),
       count: t.count,
     }));
+  }
+
+  async resolvePlayers(playerIds: string[]): Promise<PlayerRef[]> {
+    const players = await this.client.getPlayers();
+    return this.buildRefs(playerIds, players);
+  }
+
+  // --- writes (unofficial Sleeper private API; see SleeperWriteClient) -------
+
+  executeTrade(payload: TradePayload): Promise<WriteResult> {
+    return this.write().executeTrade(payload);
+  }
+
+  executeWaiverClaim(payload: WaiverClaimPayload): Promise<WriteResult> {
+    return this.write().executeWaiverClaim(payload);
+  }
+
+  executeAddDrop(payload: AddDropPayload): Promise<WriteResult> {
+    return this.write().executeAddDrop(payload);
+  }
+
+  /** The write client, or a clear error if this adapter was built read-only. */
+  private write(): SleeperWriteClient {
+    if (!this.writeClient) {
+      throw new Error(
+        `Sleeper adapter for league ${this.leagueId} was created without a session, ` +
+          `so it is read-only. Configure a session token to enable writes.`,
+      );
+    }
+    return this.writeClient;
   }
 
   // --- internal helpers -----------------------------------------------------

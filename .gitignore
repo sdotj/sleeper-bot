@@ -5,6 +5,8 @@ dist/
 # Secrets and local config — only the .example.* files are committed
 .env
 config/leagues.json
+config/rules.json
+config/rankings.json
 
 # Cached Sleeper player dump (large, refetched on demand)
 .cache/
