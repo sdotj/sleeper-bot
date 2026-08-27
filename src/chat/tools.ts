@@ -18,6 +18,9 @@ export const CHAT_TOOLS: Anthropic.Tool[] = [
   { name: "get_transactions", description: "A week's trades, waivers, and add/drops (defaults to current week).", input_schema: { type: "object", properties: { ...leagueId, week: { type: "number" } }, required: ["leagueId"] } },
   { name: "search_players", description: "Find players by name; resolve names <-> ids. Filter by position/team.", input_schema: { type: "object", properties: { ...leagueId, query: { type: "string" }, position: { type: "string" }, team: { type: "string" }, limit: { type: "number" } }, required: ["leagueId", "query"] } },
   { name: "get_trending_players", description: "Most-added or most-dropped players across Sleeper.", input_schema: { type: "object", properties: { ...leagueId, type: { type: "string", enum: ["add", "drop"] }, limit: { type: "number" } }, required: ["leagueId"] } },
+  { name: "get_drafts", description: "List drafts for a league (id, status, type, rounds, teams). Use a draftId with the draft tools; a mock draft's id also works.", input_schema: { type: "object", properties: { ...leagueId }, required: ["leagueId"] } },
+  { name: "get_draft_board", description: "Live draft board: status, who's on the clock (pick/round/slot/roster), recent picks. Pass yourRosterId for your next pick number.", input_schema: { type: "object", properties: { ...leagueId, draftId: { type: "string" }, yourRosterId: { type: "number" } }, required: ["leagueId", "draftId"] } },
+  { name: "get_draft_recommendations", description: "Best available players in a draft by value (KTC), drafted players excluded. rosterId weights toward your needs; position filters (QB/RB/WR/TE/K/DEF).", input_schema: { type: "object", properties: { ...leagueId, draftId: { type: "string" }, rosterId: { type: "number" }, position: { type: "string" }, limit: { type: "number" } }, required: ["leagueId", "draftId"] } },
   { name: "get_auth_status", description: "Whether writes are authorized (ok/needs-reauth) and token expiry.", input_schema: { type: "object", properties: { ...leagueId }, required: ["leagueId"] } },
   { name: "get_audit_log", description: "History of proposed/executed/rejected actions.", input_schema: { type: "object", properties: { leagueId: { type: "string" } } } },
   { name: "list_pending_actions", description: "Proposed actions awaiting confirmation.", input_schema: { type: "object", properties: { leagueId: { type: "string" } } } },
@@ -58,6 +61,10 @@ export async function dispatchTool(ops: SleepBotOperations, name: string, input:
     case "get_trending_players": return ops.getTrendingPlayers(a.leagueId, a.type ?? "add", a.limit);
     case "get_auth_status": return ops.getAuthStatus(a.leagueId);
     case "get_audit_log": return ops.getAuditLog(a.leagueId);
+    case "get_drafts": return ops.listDrafts(a.leagueId);
+    case "get_draft_board": return ops.getDraftBoard(a.leagueId, a.draftId, a.yourRosterId);
+    case "get_draft_recommendations":
+      return ops.getDraftRecommendations(a.leagueId, a.draftId, { rosterId: a.rosterId, position: a.position, limit: a.limit });
     case "list_pending_actions": return ops.listPendingActions(a.leagueId);
     case "propose_trade":
       return proposalOutcome(await ops.proposeTrade(a.leagueId, { fromRosterId: a.fromRosterId, toRosterId: a.toRosterId, sendPlayerIds: a.sendPlayerIds, receivePlayerIds: a.receivePlayerIds }));

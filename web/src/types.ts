@@ -66,3 +66,41 @@ export interface AuditEvent {
   at: number;
   summary: string;
 }
+
+export interface Draft {
+  draftId: string;
+  status: string;
+  type: string;
+  season: string;
+  rounds: number;
+  teams: number;
+  slotToRosterId: Record<string, number>;
+  starterSlots: Record<string, number>;
+}
+
+export interface DraftPick {
+  round: number;
+  pickNo: number;
+  slot: number;
+  rosterId: number | null;
+  playerName: string;
+  position: string;
+  team: string | null;
+}
+
+export interface DraftBoard {
+  draft: Draft;
+  pickCount: number;
+  onTheClock: { pickNo: number; round: number; slot: number; rosterId: number | null } | null;
+  recentPicks: DraftPick[];
+  yourNextPickNo: number | null;
+}
+
+export interface DraftRecommendation {
+  playerId: string;
+  name: string;
+  position: string;
+  team: string | null;
+  value: number;
+  reason: string;
+}

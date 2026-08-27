@@ -73,6 +73,30 @@ export function buildApiServer(ops: SleepBotOperations): FastifyInstance {
   );
   app.get("/api/leagues/:id/auth", h((req) => ops.getAuthStatus(id(req))));
 
+  // --- drafts (read-only assistant) ----------------------------------------
+  const draftId = (req: FastifyRequest) => (req.params as { draftId: string }).draftId;
+  const num = (v: string | undefined) => (v != null ? Number(v) : undefined);
+  app.get("/api/leagues/:id/drafts", h((req) => ops.listDrafts(id(req))));
+  app.get(
+    "/api/leagues/:id/drafts/:draftId/board",
+    h((req) => ops.getDraftBoard(id(req), draftId(req), num((req.query as { yourRosterId?: string }).yourRosterId))),
+  );
+  app.get(
+    "/api/leagues/:id/drafts/:draftId/picks",
+    h((req) => ops.getDraftPicks(id(req), draftId(req))),
+  );
+  app.get(
+    "/api/leagues/:id/drafts/:draftId/recommendations",
+    h((req) => {
+      const q = req.query as { rosterId?: string; position?: string; limit?: string };
+      return ops.getDraftRecommendations(id(req), draftId(req), {
+        rosterId: num(q.rosterId),
+        position: q.position,
+        limit: num(q.limit),
+      });
+    }),
+  );
+
   app.get("/api/audit", h((req) => ops.getAuditLog((req.query as { leagueId?: string }).leagueId)));
   app.get(
     "/api/pending",

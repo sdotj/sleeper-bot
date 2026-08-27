@@ -1,5 +1,15 @@
 import { useEffect, useState } from "react";
-import type { AuditEvent, AuthStatus, League, Matchup, Roster, StandingRow } from "./types";
+import type {
+  AuditEvent,
+  AuthStatus,
+  Draft,
+  DraftBoard,
+  DraftRecommendation,
+  League,
+  Matchup,
+  Roster,
+  StandingRow,
+} from "./types";
 
 async function get<T>(url: string): Promise<T> {
   const res = await fetch(url);
@@ -18,6 +28,22 @@ export const api = {
     get<Matchup[]>(`/api/leagues/${id}/matchups${week ? `?week=${week}` : ""}`),
   auth: (id: string) => get<AuthStatus>(`/api/leagues/${id}/auth`),
   audit: (id: string) => get<AuditEvent[]>(`/api/audit?leagueId=${encodeURIComponent(id)}`),
+  drafts: (id: string) => get<Draft[]>(`/api/leagues/${id}/drafts`),
+  draftBoard: (id: string, draftId: string, yourRosterId?: number) =>
+    get<DraftBoard>(
+      `/api/leagues/${id}/drafts/${draftId}/board${yourRosterId != null ? `?yourRosterId=${yourRosterId}` : ""}`,
+    ),
+  draftRecs: (
+    id: string,
+    draftId: string,
+    o: { rosterId?: number; position?: string; limit?: number } = {},
+  ) => {
+    const q = new URLSearchParams();
+    if (o.rosterId != null) q.set("rosterId", String(o.rosterId));
+    if (o.position) q.set("position", o.position);
+    if (o.limit != null) q.set("limit", String(o.limit));
+    return get<DraftRecommendation[]>(`/api/leagues/${id}/drafts/${draftId}/recommendations?${q}`);
+  },
 };
 
 /** Tiny async-data hook: re-runs when any dep changes. */
