@@ -1,7 +1,7 @@
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { NeedsReauthError } from "../auth/index.js";
 import { SleepBotOperations, proposalOutcome } from "../core/index.js";
-import { ChatUnavailableError, runChatTurn, type ChatMessage } from "../chat/index.js";
+import { ChatUnavailableError, runChatTurn, type ChatMessage, type DraftContextRef } from "../chat/index.js";
 import type {
   AddDropPayload,
   TradePayload,
@@ -124,8 +124,9 @@ export function buildApiServer(ops: SleepBotOperations): FastifyInstance {
   // --- chat (server-side Claude tool-use loop) -----------------------------
   app.post("/api/chat", async (req, reply) => {
     try {
-      const { messages } = (req.body as { messages?: ChatMessage[] }) ?? {};
-      return await runChatTurn(ops, messages ?? []);
+      const { messages, draftContext } =
+        (req.body as { messages?: ChatMessage[]; draftContext?: DraftContextRef }) ?? {};
+      return await runChatTurn(ops, messages ?? [], { draftContext });
     } catch (err) {
       if (err instanceof ChatUnavailableError) return reply.status(503).send({ error: err.message });
       return fail(reply, err);

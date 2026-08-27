@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, useAsync } from "./api";
+import { Chat } from "./chat";
 
 const POSITIONS = ["", "QB", "RB", "WR", "TE", "K", "DEF"] as const;
 
@@ -9,6 +10,7 @@ export function DraftView({ leagueId }: { leagueId: string }) {
   const [manualDraftId, setManualDraftId] = useState<string>("");
   const [rosterId, setRosterId] = useState<string>("");
   const [position, setPosition] = useState<string>("");
+  const [chatOpen, setChatOpen] = useState(false);
   const [tick, setTick] = useState(0);
 
   // A pasted mock-draft id wins; else the dropdown selection; else the first
@@ -28,13 +30,15 @@ export function DraftView({ leagueId }: { leagueId: string }) {
     [leagueId, activeDraft, position, yourRosterId, tick],
   );
 
-  // Auto-refresh while a draft is live.
-  const live = board.data?.draft.status === "drafting";
+  // Poll the live board on an interval for any draft that isn't finished, so
+  // both the display and the (server-side) chat context stay current.
+  const status = board.data?.draft.status;
+  const polling = !!activeDraft && status !== "complete";
   useEffect(() => {
-    if (!live) return;
+    if (!polling) return;
     const t = setInterval(() => setTick((n) => n + 1), 10_000);
     return () => clearInterval(t);
-  }, [live]);
+  }, [polling]);
 
   if (drafts.loading) return <p className="muted">Loading…</p>;
   if (drafts.error) return <p className="error">⚠ {drafts.error}</p>;
@@ -74,9 +78,14 @@ export function DraftView({ leagueId }: { leagueId: string }) {
           style={{ width: "9rem" }}
         />
         <button onClick={() => setTick((n) => n + 1)}>Refresh</button>
-        {live && <span className="badge ok">live · auto-refresh</span>}
+        <button className="primary" onClick={() => setChatOpen((o) => !o)} disabled={!activeDraft}>
+          {chatOpen ? "Close chat" : "Start chat"}
+        </button>
+        {polling && <span className="badge ok">live · 10s</span>}
       </div>
 
+      <div className={chatOpen ? "draft-room" : undefined}>
+        <div className="draft-main">
       {board.data && (
         <div className="card draft-board">
           <div className="card-head">
@@ -133,6 +142,25 @@ export function DraftView({ leagueId }: { leagueId: string }) {
           ))}
         </ol>
       )}
+        </div>
+
+        {chatOpen && activeDraft && (
+          <div className="draft-chat-panel">
+            <Chat
+              key={activeDraft}
+              draftContext={{ leagueId, draftId: activeDraft, rosterId: yourRosterId }}
+              placeholder="Ask about this draft…"
+              emptyHint={
+                <>
+                  This chat sees the <strong>live board</strong> for the selected draft — who’s on
+                  the clock, recent picks, your next pick, and best available by value. Ask “who
+                  should I take here?” or “what do I need most?”. It refreshes the board every turn.
+                </>
+              }
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 }

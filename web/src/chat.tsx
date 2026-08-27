@@ -5,7 +5,22 @@ interface Msg {
   content: string;
 }
 
-export function Chat() {
+/** Optional live-draft scope: when set, the server injects the current board. */
+export interface DraftContext {
+  leagueId: string;
+  draftId: string;
+  rosterId?: number;
+}
+
+export function Chat({
+  draftContext,
+  placeholder = "Message SleepBot…",
+  emptyHint,
+}: {
+  draftContext?: DraftContext;
+  placeholder?: string;
+  emptyHint?: React.ReactNode;
+}) {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -24,7 +39,7 @@ export function Chat() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ messages: history }),
+        body: JSON.stringify({ messages: history, draftContext }),
       });
       const data = await res.json();
       if (!res.ok) setError(data.error ?? "chat failed");
@@ -42,9 +57,13 @@ export function Chat() {
       <div className="chat-log" ref={listRef}>
         {msgs.length === 0 && (
           <p className="muted">
-            Ask SleepBot about your league — “how do my starters look this week?”, “who’s trending on
-            waivers?”, “draft a trade sending my WR2 for a RB”. It uses the same tools; writes stay
-            confirm-first.
+            {emptyHint ?? (
+              <>
+                Ask SleepBot about your league — “how do my starters look this week?”, “who’s
+                trending on waivers?”, “draft a trade sending my WR2 for a RB”. It uses the same
+                tools; writes stay confirm-first.
+              </>
+            )}
           </p>
         )}
         {msgs.map((m, i) => (

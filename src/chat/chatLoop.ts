@@ -16,6 +16,18 @@ export interface ChatMessage {
   content: string;
 }
 
+/**
+ * When the chat is opened from a draft room, the GUI passes this so the server
+ * can inject the live board into the model's context on every turn — the
+ * assistant is always current without the user pasting a draft id or asking it
+ * to "check the board".
+ */
+export interface DraftContextRef {
+  leagueId: string;
+  draftId: string;
+  rosterId?: number;
+}
+
 const SYSTEM = `You are SleepBot, a fantasy-football assistant for the user's Sleeper league(s).
 
 - Use the tools to fetch real data before answering; never invent rosters, standings, scores, or players.
@@ -31,7 +43,7 @@ const SYSTEM = `You are SleepBot, a fantasy-football assistant for the user's Sl
 export async function runChatTurn(
   ops: SleepBotOperations,
   history: ChatMessage[],
-  opts: { model?: string; maxIterations?: number } = {},
+  opts: { model?: string; maxIterations?: number; draftContext?: DraftContextRef } = {},
 ): Promise<{ reply: string; toolCalls: string[] }> {
   if (!process.env.ANTHROPIC_API_KEY) {
     throw new ChatUnavailableError(
@@ -45,11 +57,17 @@ export async function runChatTurn(
   const toolCalls: string[] = [];
   const maxIterations = opts.maxIterations ?? 12;
 
+  // Resolve the live draft snapshot once at the start of the turn (seconds old
+  // when the model answers). It's re-fetched fresh on the next turn.
+  const system = opts.draftContext
+    ? `${SYSTEM}\n\n${await draftContextBlock(ops, opts.draftContext)}`
+    : SYSTEM;
+
   for (let i = 0; i < maxIterations; i++) {
     const res = await client.messages.create({
       model,
       max_tokens: 4096,
-      system: SYSTEM,
+      system,
       tools: CHAT_TOOLS,
       messages,
     });
@@ -85,4 +103,39 @@ export async function runChatTurn(
   }
 
   return { reply: "Stopped after too many tool calls — try a narrower question.", toolCalls };
+}
+
+/** Build a compact live-draft snapshot to prepend to the system prompt. */
+async function draftContextBlock(ops: SleepBotOperations, ref: DraftContextRef): Promise<string> {
+  try {
+    const [board, recs] = await Promise.all([
+      ops.getDraftBoard(ref.leagueId, ref.draftId, ref.rosterId),
+      ops.getDraftRecommendations(ref.leagueId, ref.draftId, { rosterId: ref.rosterId, limit: 12 }),
+    ]);
+    const otc = board.onTheClock
+      ? `pick #${board.onTheClock.pickNo} (round ${board.onTheClock.round}, slot ${board.onTheClock.slot}` +
+        `${board.onTheClock.rosterId != null ? `, roster ${board.onTheClock.rosterId}` : ""})`
+      : "n/a";
+    const recent =
+      board.recentPicks
+        .slice(0, 8)
+        .map((p) => `#${p.pickNo} ${p.playerName} (${p.position})`)
+        .join(", ") || "none yet";
+    const available = recs
+      .map((r) => `${r.name} (${r.position}${r.team ? ` ${r.team}` : ""}, val ${r.value})`)
+      .join("; ");
+    return [
+      `## LIVE DRAFT ROOM (this is the user's active draft; snapshot current as of this message)`,
+      `draftId ${ref.draftId} · status ${board.draft.status} · ${board.draft.type} · ${board.draft.rounds} rounds × ${board.draft.teams} teams · ${board.pickCount} picks made.`,
+      `On the clock: ${otc}.`,
+      ref.rosterId != null
+        ? `The user is roster ${ref.rosterId}; their next pick is #${board.yourNextPickNo ?? "unknown"}.`
+        : `The user did not set their roster/slot, so "your next pick" is unavailable.`,
+      `Recent picks (newest first): ${recent}.`,
+      `Top available by value now: ${available}.`,
+      `Values are KeepTradeCut (mode set by the server). For deeper queries (filter a position, more of the board) call the draft tools with draftId ${ref.draftId}.`,
+    ].join("\n");
+  } catch (err) {
+    return `## LIVE DRAFT ROOM\n(Could not load the live board: ${(err as Error).message}. Use the draft tools with draftId ${ref.draftId} to fetch it.)`;
+  }
 }
