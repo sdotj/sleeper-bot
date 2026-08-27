@@ -71,7 +71,8 @@ npm run dev        # serves over stdio (tsx, no build)
 |---|---|
 | `list_leagues` | Configured leagues (from config, no API call) |
 | `get_league_info` | Settings, scoring, season, roster positions |
-| `get_rosters` | Every roster: starters, bench, IR, record |
+| `get_rosters` | Every roster: starters, bench, IR (player names resolved), record |
+| `get_my_roster` | Your own roster, identified from the configured `username` |
 | `get_matchups` | Weekly matchups + scores (defaults to current week) |
 | `get_standings` | Ranked by wins, then points-for |
 | `get_transactions` | Trades, waivers, add/drops (defaults to current week) |
@@ -79,7 +80,10 @@ npm run dev        # serves over stdio (tsx, no build)
 | `get_trending_players` | Sleeper's most-added / most-dropped |
 
 Every tool takes your `leagueId` label, so multi-league support is just "pass a
-different id."
+different id." Set `sleeper.username` in config and rosters/standings/matchups
+are flagged with `isYou`, so SleepBot knows which team is yours without asking.
+
+Run the tests with `npm test`.
 
 ## Roadmap
 
