@@ -45,6 +45,22 @@
         "sleepbot.sleeper-api"
       ]
     },
+    "sleepbot.anthropic-api": {
+      "kind": "Actor",
+      "parent": "sleepbot",
+      "paths": [],
+      "edges": []
+    },
+    "sleepbot.api": {
+      "kind": "Module",
+      "parent": "sleepbot",
+      "paths": [
+        "./src/api"
+      ],
+      "edges": [
+        "sleepbot.core"
+      ]
+    },
     "sleepbot.audit": {
       "kind": "Module",
       "parent": "sleepbot",
@@ -63,6 +79,17 @@
         "sleepbot.sleeper-api"
       ]
     },
+    "sleepbot.chat": {
+      "kind": "Module",
+      "parent": "sleepbot",
+      "paths": [
+        "./src/chat"
+      ],
+      "edges": [
+        "sleepbot.anthropic-api",
+        "sleepbot.core"
+      ]
+    },
     "sleepbot.config": {
       "kind": "Module",
       "parent": "sleepbot",
@@ -70,6 +97,31 @@
         "./src/config"
       ],
       "edges": []
+    },
+    "sleepbot.core": {
+      "kind": "Module",
+      "parent": "sleepbot",
+      "paths": [
+        "./src/core"
+      ],
+      "edges": [
+        "sleepbot.actions",
+        "sleepbot.adapters.interface",
+        "sleepbot.audit",
+        "sleepbot.auth",
+        "sleepbot.config",
+        "sleepbot.value"
+      ]
+    },
+    "sleepbot.gui": {
+      "kind": "Module",
+      "parent": "sleepbot",
+      "paths": [
+        "./web"
+      ],
+      "edges": [
+        "sleepbot.api"
+      ]
     },
     "sleepbot.rules": {
       "kind": "Module",

@@ -10,6 +10,7 @@ generated: true
 - sleepbot.adapters
 - sleepbot.adapters.interface
 - sleepbot.adapters.sleeper
+- sleepbot.anthropic-api
 - sleepbot.audit
 - sleepbot.auth
 - sleepbot.config
@@ -20,7 +21,10 @@ generated: true
 - sleepbot.value
 
 ## Ghost
-None
+- sleepbot.api
+- sleepbot.chat
+- sleepbot.core
+- sleepbot.gui
 
 ## Orphaned
 None
@@ -42,7 +46,12 @@ None in Phase 1.
 - warning: CAIRN_CONTRACT_LEAF_UNCOVERED leaf node `sleepbot.value` declares no contract
 - warning: CAIRN_PROVENANCE_NO_DECISION node `sleepbot.adapters.interface` has no decision artefact explaining why it exists
 - warning: CAIRN_PROVENANCE_NO_DECISION node `sleepbot.adapters.sleeper` has no decision artefact explaining why it exists
+- warning: CAIRN_PROVENANCE_NO_DECISION node `sleepbot.anthropic-api` has no decision artefact explaining why it exists
 - warning: CAIRN_PROVENANCE_NO_DECISION node `sleepbot.config` has no decision artefact explaining why it exists
 - warning: CAIRN_PROVENANCE_NO_DECISION node `sleepbot.server` has no decision artefact explaining why it exists
 - warning: CAIRN_PROVENANCE_NO_DECISION node `sleepbot.sleeper-api` has no decision artefact explaining why it exists
 - warning: CAIRN_PROVENANCE_NO_DECISION node `sleepbot.tools` has no decision artefact explaining why it exists
+- warning: CAIRN_RECONCILE_LANGUAGE_UNKNOWN Target `sleepbot.api` at `src/api` has unknown language; declare it in targets.
+- warning: CAIRN_RECONCILE_LANGUAGE_UNKNOWN Target `sleepbot.chat` at `src/chat` has unknown language; declare it in targets.
+- warning: CAIRN_RECONCILE_LANGUAGE_UNKNOWN Target `sleepbot.core` at `src/core` has unknown language; declare it in targets.
+- warning: CAIRN_RECONCILE_LANGUAGE_UNKNOWN Target `sleepbot.gui` at `web` has unknown language; declare it in targets.

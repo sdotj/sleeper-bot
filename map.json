@@ -372,6 +372,28 @@
       ]
     },
     {
+      "id": "sleepbot.anthropic-api",
+      "kind": "actor",
+      "name": "AnthropicApi",
+      "state": "synced",
+      "paths": [],
+      "files": [],
+      "contracts": [],
+      "symbols": []
+    },
+    {
+      "id": "sleepbot.api",
+      "kind": "module",
+      "name": "Api",
+      "state": "ghost",
+      "paths": [
+        "./src/api"
+      ],
+      "files": [],
+      "contracts": [],
+      "symbols": []
+    },
+    {
       "id": "sleepbot.audit",
       "kind": "module",
       "name": "Audit",
@@ -577,6 +599,18 @@
       ]
     },
     {
+      "id": "sleepbot.chat",
+      "kind": "module",
+      "name": "Chat",
+      "state": "ghost",
+      "paths": [
+        "./src/chat"
+      ],
+      "files": [],
+      "contracts": [],
+      "symbols": []
+    },
+    {
       "id": "sleepbot.config",
       "kind": "module",
       "name": "Config",
@@ -639,6 +673,30 @@
           "end_line": 80
         }
       ]
+    },
+    {
+      "id": "sleepbot.core",
+      "kind": "module",
+      "name": "Core",
+      "state": "ghost",
+      "paths": [
+        "./src/core"
+      ],
+      "files": [],
+      "contracts": [],
+      "symbols": []
+    },
+    {
+      "id": "sleepbot.gui",
+      "kind": "module",
+      "name": "Gui",
+      "state": "ghost",
+      "paths": [
+        "./web"
+      ],
+      "files": [],
+      "contracts": [],
+      "symbols": []
     },
     {
       "id": "sleepbot.rules",
@@ -1068,9 +1126,59 @@
       "description": "obtains a session credential for write calls"
     },
     {
+      "from": "sleepbot.api",
+      "to": "sleepbot.core",
+      "description": "serves core operations over local HTTP"
+    },
+    {
       "from": "sleepbot.auth",
       "to": "sleepbot.sleeper-api",
       "description": "authenticates to obtain / refresh a session token"
+    },
+    {
+      "from": "sleepbot.chat",
+      "to": "sleepbot.core",
+      "description": "exposes core operations as Claude tools"
+    },
+    {
+      "from": "sleepbot.chat",
+      "to": "sleepbot.anthropic-api",
+      "description": "runs the Messages API tool-use loop"
+    },
+    {
+      "from": "sleepbot.core",
+      "to": "sleepbot.config",
+      "description": "loads league config"
+    },
+    {
+      "from": "sleepbot.core",
+      "to": "sleepbot.adapters.interface",
+      "description": "builds adapters; exposes read operations"
+    },
+    {
+      "from": "sleepbot.core",
+      "to": "sleepbot.actions",
+      "description": "exposes propose / execute / pending operations"
+    },
+    {
+      "from": "sleepbot.core",
+      "to": "sleepbot.audit",
+      "description": "exposes audit-log reads"
+    },
+    {
+      "from": "sleepbot.core",
+      "to": "sleepbot.auth",
+      "description": "constructs the write session"
+    },
+    {
+      "from": "sleepbot.core",
+      "to": "sleepbot.value",
+      "description": "constructs the value provider"
+    },
+    {
+      "from": "sleepbot.gui",
+      "to": "sleepbot.api",
+      "description": "calls the local HTTP API"
     },
     {
       "from": "sleepbot.rules",
@@ -1109,6 +1217,38 @@
     }
   ],
   "findings": [
+    {
+      "code": "CAIRN_RECONCILE_LANGUAGE_UNKNOWN",
+      "severity": "warning",
+      "message": "Target `sleepbot.core` at `src/core` has unknown language; declare it in targets.",
+      "node": "sleepbot.core",
+      "target": "sleepbot.core:src/core",
+      "path": "src/core"
+    },
+    {
+      "code": "CAIRN_RECONCILE_LANGUAGE_UNKNOWN",
+      "severity": "warning",
+      "message": "Target `sleepbot.api` at `src/api` has unknown language; declare it in targets.",
+      "node": "sleepbot.api",
+      "target": "sleepbot.api:src/api",
+      "path": "src/api"
+    },
+    {
+      "code": "CAIRN_RECONCILE_LANGUAGE_UNKNOWN",
+      "severity": "warning",
+      "message": "Target `sleepbot.chat` at `src/chat` has unknown language; declare it in targets.",
+      "node": "sleepbot.chat",
+      "target": "sleepbot.chat:src/chat",
+      "path": "src/chat"
+    },
+    {
+      "code": "CAIRN_RECONCILE_LANGUAGE_UNKNOWN",
+      "severity": "warning",
+      "message": "Target `sleepbot.gui` at `web` has unknown language; declare it in targets.",
+      "node": "sleepbot.gui",
+      "target": "sleepbot.gui:web",
+      "path": "web"
+    },
     {
       "code": "CAIRN_CONTRACT_LEAF_UNCOVERED",
       "severity": "warning",
@@ -1191,6 +1331,13 @@
       "severity": "warning",
       "message": "node `sleepbot.adapters.sleeper` has no decision artefact explaining why it exists",
       "node": "sleepbot.adapters.sleeper",
+      "path": null
+    },
+    {
+      "code": "CAIRN_PROVENANCE_NO_DECISION",
+      "severity": "warning",
+      "message": "node `sleepbot.anthropic-api` has no decision artefact explaining why it exists",
+      "node": "sleepbot.anthropic-api",
       "path": null
     },
     {

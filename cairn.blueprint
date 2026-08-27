@@ -53,7 +53,26 @@ System SleepBot "MCP server connecting Claude to fantasy football leagues" id "s
         path "./src/auth"
     }
 
+    Module Core "Shared app wiring + operations facade every front-end (MCP, HTTP, chat) calls" id "sleepbot.core" @phase3 {
+        path "./src/core"
+    }
+
+    Module Api "Local HTTP API (Fastify) exposing the core operations to the GUI" id "sleepbot.api" @phase3 {
+        path "./src/api"
+    }
+
+    Module Chat "Server-side Claude chat loop: Anthropic Messages API tool-use over SleepBot operations" id "sleepbot.chat" @phase3 {
+        path "./src/chat"
+    }
+
+    Module Gui "React (Vite) front-end: roster, standings/matchups, audit log, chat panel" id "sleepbot.gui" @phase3 {
+        path "./web"
+    }
+
     Actor SleeperApi "Sleeper's HTTP API — public read endpoints, plus the unofficial private write endpoints (session-auth)" id "sleepbot.sleeper-api" @external {
+    }
+
+    Actor AnthropicApi "Anthropic Messages API (Claude), driven server-side by the chat loop" id "sleepbot.anthropic-api" @external {
     }
 }
 
@@ -74,3 +93,15 @@ sleepbot.rules            -> sleepbot.value              "warn rules consult pla
 sleepbot.rules            -> sleepbot.adapters.interface  "reads league state to evaluate rules (e.g. positional rank)"
 sleepbot.adapters.sleeper -> sleepbot.auth               "obtains a session credential for write calls"
 sleepbot.auth             -> sleepbot.sleeper-api         "authenticates to obtain / refresh a session token"
+
+# Phase 3 — local GUI: shared core, HTTP API, chat loop, React front-end
+sleepbot.core             -> sleepbot.config             "loads league config"
+sleepbot.core             -> sleepbot.adapters.interface  "builds adapters; exposes read operations"
+sleepbot.core             -> sleepbot.actions            "exposes propose / execute / pending operations"
+sleepbot.core             -> sleepbot.audit              "exposes audit-log reads"
+sleepbot.core             -> sleepbot.auth               "constructs the write session"
+sleepbot.core             -> sleepbot.value              "constructs the value provider"
+sleepbot.api              -> sleepbot.core               "serves core operations over local HTTP"
+sleepbot.chat             -> sleepbot.core               "exposes core operations as Claude tools"
+sleepbot.chat             -> sleepbot.anthropic-api      "runs the Messages API tool-use loop"
+sleepbot.gui              -> sleepbot.api                "calls the local HTTP API"
