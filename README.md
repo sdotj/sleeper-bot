@@ -83,10 +83,46 @@ Every tool takes your `leagueId` label, so multi-league support is just "pass a
 different id." Set `sleeper.username` in config and rosters/standings/matchups
 are flagged with `isYou`, so SleepBot knows which team is yours without asking.
 
+## Tools (Phase 2 — write actions, confirm-by-default)
+
+| Tool | Purpose |
+|---|---|
+| `propose_trade` | Draft a trade (runs rules); returns a draft, never sends |
+| `propose_waiver_claim` | Draft a waiver claim (add/drop + FAAB); draft only |
+| `propose_add_drop` | Draft a free-agent add/drop; draft only |
+| `execute_action` | Send a previously-proposed action, by actionId (explicit confirm) |
+| `list_pending_actions` | Drafts awaiting confirmation |
+
+Nothing changes your league silently: a `propose_*` tool returns a **draft**;
+`execute_action` is the explicit send. Guardrails live in `config/rules.json`
+(copy `config/rules.example.json`):
+
+```jsonc
+{
+  "mode": "manual",                 // "manual" = approve each; "auto" = send anything unblocked
+  "protect": [                      // hard blocks
+    { "playerName": "Ja'Marr Chase", "actions": ["trade", "drop"] }
+  ],
+  "warn": [                         // non-blocking flags
+    { "type": "trade_value_diff", "thresholdPct": 20 }
+  ]
+}
+```
+
+**Sleeper writes are unofficial.** They use Sleeper's private app API and need a
+session token (`SLEEPER_SESSION_TOKEN`) captured from a logged-in session — there
+is no password automation. When a session can't be refreshed, writes pause, reads
+keep working, and you're notified to supply a fresh token. Executing a real write
+also needs the private endpoint integration (a tracked follow-up); proposals,
+rules, and the audit log are fully functional today.
+
 Run the tests with `npm test`.
 
 ## Roadmap
 
-- **Phase 2** — Sleeper write actions (confirm-by-default) + rules engine (`src/rules`, stubbed)
-- **Phase 3** — local GUI (Vite/React) over the same tools
+- **Phase 2 (built)** — write actions (confirm-by-default), rules engine, audit
+  log, session handling. Remaining follow-up: wire Sleeper's private write
+  endpoints and capture a session token.
+- **Phase 3** — local GUI (Vite/React) over the same tools; surfaces the audit
+  log ("what SleepBot did while I was away")
 - **Phase 4** — `EspnAdapter` against ESPN's cookie-based API, same interface
