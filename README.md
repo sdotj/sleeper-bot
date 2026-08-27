@@ -144,8 +144,8 @@ Run the tests with `npm test`.
 ## GUI (Phase 3)
 
 A local React (Vite) app over a thin HTTP API that reuses the same core
-operations as the MCP server. Screens: My Team, Standings, Matchups, the Audit
-log, and a Chat panel (server-side Claude with the same tools).
+operations as the MCP server. Screens: My Team, Standings, Matchups, **Draft**,
+the Audit log, and a Chat panel (server-side Claude with the same tools).
 
 ```bash
 npm run build && npm run api          # HTTP API on :8787 (reuses the core)
@@ -166,4 +166,10 @@ statically, and point the `Store` at a hosted DB.
 - **Phase 3 (built)** — local GUI (Vite/React) + HTTP API + in-app Claude chat,
   all over the shared core. Surfaces the audit log ("what SleepBot did while I
   was away").
+- **Drafts (built)** — read-only draft assistant for mock and real drafts: live
+  board (status, on-the-clock, your next pick), and best-available
+  recommendations by KTC value + roster need. Tools `get_drafts` /
+  `get_draft_board` / `get_draft_recommendations`, a GUI Draft tab (auto-refresh
+  while live), and chat with real draft context. Picks are made by you in Sleeper
+  (their pick-submit is an undocumented real-time websocket).
 - **Phase 4** — `EspnAdapter` against ESPN's cookie-based API, same interface
