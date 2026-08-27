@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { api, useAsync } from "./api";
 import { Audit, Matchups, MyTeam, Standings } from "./views";
+import { Chat } from "./chat";
 
-const TABS = ["My Team", "Standings", "Matchups", "Audit"] as const;
+const TABS = ["My Team", "Standings", "Matchups", "Audit", "Chat"] as const;
 type Tab = (typeof TABS)[number];
 
 function AuthBadge({ leagueId }: { leagueId: string }) {
@@ -63,6 +64,7 @@ export function App() {
             {tab === "Standings" && <Standings leagueId={activeLeague} />}
             {tab === "Matchups" && <Matchups leagueId={activeLeague} />}
             {tab === "Audit" && <Audit leagueId={activeLeague} />}
+            {tab === "Chat" && <Chat />}
           </main>
         </>
       )}

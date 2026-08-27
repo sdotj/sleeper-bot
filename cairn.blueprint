@@ -102,6 +102,7 @@ sleepbot.core             -> sleepbot.audit              "exposes audit-log read
 sleepbot.core             -> sleepbot.auth               "constructs the write session"
 sleepbot.core             -> sleepbot.value              "constructs the value provider"
 sleepbot.api              -> sleepbot.core               "serves core operations over local HTTP"
+sleepbot.api              -> sleepbot.chat               "hosts the /api/chat endpoint"
 sleepbot.chat             -> sleepbot.core               "exposes core operations as Claude tools"
 sleepbot.chat             -> sleepbot.anthropic-api      "runs the Messages API tool-use loop"
 sleepbot.gui              -> sleepbot.api                "calls the local HTTP API"

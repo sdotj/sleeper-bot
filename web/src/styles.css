@@ -85,3 +85,13 @@ ul.audit li { display: flex; gap: 0.6rem; padding: 0.6rem 0; border-bottom: 1px 
 .audit-rejected .audit-summary, .audit-failed .audit-summary { color: #ffb4ae; }
 
 code { background: var(--panel-2); padding: 0.1rem 0.35rem; border-radius: 4px; font-size: 0.85em; }
+
+.chat { display: flex; flex-direction: column; height: 62vh; }
+.chat-log { flex: 1; overflow-y: auto; padding: 0.25rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.bubble { max-width: 80%; padding: 0.55rem 0.8rem; border-radius: 12px; font-size: 0.9rem; white-space: pre-wrap; line-height: 1.4; }
+.bubble.user { align-self: flex-end; background: var(--accent); color: #04122a; border-bottom-right-radius: 3px; }
+.bubble.assistant { align-self: flex-start; background: var(--panel-2); border-bottom-left-radius: 3px; }
+.chat-input { display: flex; gap: 0.5rem; margin-top: 0.6rem; }
+.chat-input textarea { flex: 1; resize: none; height: 2.6rem; background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 0.55rem 0.7rem; font: inherit; font-size: 0.9rem; }
+.chat-input button { background: var(--accent); color: #04122a; border: none; border-radius: 8px; padding: 0 1.1rem; font-weight: 600; cursor: pointer; }
+.chat-input button:disabled { opacity: 0.5; cursor: default; }
