@@ -159,8 +159,8 @@
       ],
       "edges": [
         "sleepbot.actions",
-        "sleepbot.adapters.interface",
-        "sleepbot.config"
+        "sleepbot.config",
+        "sleepbot.core"
       ]
     },
     "sleepbot.value": {

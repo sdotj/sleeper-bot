@@ -79,7 +79,7 @@ System SleepBot "MCP server connecting Claude to fantasy football leagues" id "s
 # Dependencies
 sleepbot.server           -> sleepbot.tools               "registers all tools with the MCP server"
 sleepbot.server           -> sleepbot.config              "loads leagues config at startup"
-sleepbot.tools            -> sleepbot.adapters.interface  "calls platform-agnostic adapter methods"
+sleepbot.tools            -> sleepbot.core                "binds shared core operations as MCP tools"
 sleepbot.tools            -> sleepbot.config              "resolves a leagueId label to its config entry"
 sleepbot.adapters.sleeper -> sleepbot.adapters.interface  "implements LeagueAdapter"
 sleepbot.adapters.sleeper -> sleepbot.sleeper-api         "fetches league data over HTTP"

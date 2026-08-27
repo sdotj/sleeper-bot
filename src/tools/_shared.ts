@@ -1,78 +1,17 @@
-import type { WriteableLeagueAdapter } from "../adapters/LeagueAdapter.js";
-import { SleeperAdapter } from "../adapters/sleeper/SleeperAdapter.js";
-import { SleeperClient } from "../adapters/sleeper/sleeperClient.js";
-import { SleeperSessionProvider } from "../auth/index.js";
-import { AuditLog, JsonFileStore } from "../audit/index.js";
-import { GenericValueProvider } from "../value/index.js";
-import { RulesEngine, loadRulesConfig } from "../rules/index.js";
-import { ActionPipeline, PendingStore, type ProposedAction } from "../actions/index.js";
+import { buildAppContext, type AppContext } from "../core/index.js";
+import type { ProposedAction } from "../actions/index.js";
 import type { ConfigRegistry } from "../config/loader.js";
-import type { LeagueEntry } from "../config/schema.js";
 
 /**
- * Context handed to every tool: the config registry, a factory that returns the
- * (write-capable) adapter for a league, and the Phase-2 action pipeline. Read
- * tools use the adapter's read methods; write tools go through the pipeline.
+ * Tools run against the shared core {@link AppContext} — the same object the
+ * HTTP api and chat loop use. The MCP tool files are thin: validate input, call
+ * a context collaborator (adapter / pipeline / config), format the result.
  */
-export interface ToolContext {
-  config: ConfigRegistry;
-  adapterFor(leagueId: string): WriteableLeagueAdapter;
-  pipeline: ActionPipeline;
-}
+export type ToolContext = AppContext;
 
-/**
- * Build the full tool context once at startup. Loads rules + optional rankings
- * from disk, wires the shared JSON store (audit + pending), and caches one
- * adapter per league so each league's write session (and its needs-reauth
- * state) persists across calls.
- */
-export async function buildToolContext(config: ConfigRegistry): Promise<ToolContext> {
-  const store = new JsonFileStore();
-  const audit = new AuditLog(store);
-  const pending = new PendingStore(store);
-  const rules = new RulesEngine(await loadRulesConfig());
-  const value = await GenericValueProvider.fromFile(
-    process.env.SLEEPBOT_RANKINGS ?? "config/rankings.json",
-  );
-
-  const adapters = new Map<string, WriteableLeagueAdapter>();
-  const adapterFor = (leagueId: string): WriteableLeagueAdapter => {
-    let adapter = adapters.get(leagueId);
-    if (!adapter) {
-      adapter = buildAdapter(config.get(leagueId));
-      adapters.set(leagueId, adapter);
-    }
-    return adapter;
-  };
-
-  const pipeline = new ActionPipeline({ rules, audit, pending, value, adapterFor });
-  return { config, adapterFor, pipeline };
-}
-
-/** Map a validated league entry to its write-capable adapter. New platforms slot in here. */
-function buildAdapter(entry: LeagueEntry): WriteableLeagueAdapter {
-  switch (entry.platform) {
-    case "sleeper": {
-      // schema.superRefine guarantees `sleeper` is present for platform "sleeper".
-      // A session is always attached; with no token it sits in needs-reauth,
-      // which only affects writes — reads never touch it.
-      // SLEEPER_TOKEN matches the ecosystem convention; SLEEPER_SESSION_TOKEN
-      // is kept as a fallback for anyone who set it earlier.
-      const session = new SleeperSessionProvider({
-        token: process.env.SLEEPER_TOKEN ?? process.env.SLEEPER_SESSION_TOKEN,
-      });
-      return new SleeperAdapter(entry.sleeper!.leagueId, new SleeperClient(), entry.sleeper!.username, session);
-    }
-    case "espn":
-      throw new Error(
-        `league "${entry.id}" uses platform "espn", which arrives in Phase 4. ` +
-          `Phase 1/2 support Sleeper only.`,
-      );
-    default: {
-      const exhaustive: never = entry.platform;
-      throw new Error(`unsupported platform: ${String(exhaustive)}`);
-    }
-  }
+/** Build the tool context once at startup (delegates to the shared core). */
+export function buildToolContext(config: ConfigRegistry): Promise<ToolContext> {
+  return buildAppContext(config);
 }
 
 /**
