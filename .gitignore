@@ -9,5 +9,10 @@ config/leagues.json
 # Cached Sleeper player dump (large, refetched on demand)
 .cache/
 
+# Cairn volatile caches (regenerated on every scan/hook; durable state —
+# blueprint-snapshot.json, interface-hashes.json, agent-pack.json — is tracked)
+.cairn/state/head-blueprint.cache
+.cairn/state/reconciler-cache.json
+
 # OS / editor
 .DS_Store
