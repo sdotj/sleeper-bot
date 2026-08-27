@@ -50,3 +50,20 @@ the provider without touching callers.
   Phase 3).
 - Writes remain best-effort against an unofficial API and may break if Sleeper
   changes it; this is documented at the call site.
+
+## Update (2026-08-26): implementation reality
+
+Wired against Sleeper's private GraphQL API (`https://sleeper.com/graphql`),
+protocol per cameron-eth/sleeper-sdk. Two facts refined the design:
+
+- **The token is a JWT.** We decode its `exp` up front, so `needs-reauth` is
+  flagged *before* a doomed write, not only after one — better than the
+  reactive-only plan.
+- **There is no refresh endpoint.** Recovery is always a manual re-capture, so
+  the "refresh where safe" branch is effectively unused for Sleeper; the
+  fail-safe (`markInvalid` → pause writes, notify) is the real path.
+- The live endpoint returns auth failures as a bare message ("Your token is
+  invalid.") with no `code`, so auth-error detection matches on message too.
+- `SLEEPER_TOKEN` is the env var (ecosystem convention); `get_auth_status`
+  surfaces state + expiry. Some regions may need a VPN to reach the endpoint —
+  reported as a plain network error, never worked around.

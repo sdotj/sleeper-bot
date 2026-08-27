@@ -92,6 +92,7 @@ are flagged with `isYou`, so SleepBot knows which team is yours without asking.
 | `propose_add_drop` | Draft a free-agent add/drop; draft only |
 | `execute_action` | Send a previously-proposed action, by actionId (explicit confirm) |
 | `list_pending_actions` | Drafts awaiting confirmation |
+| `get_auth_status` | Whether writes are authorized (`ok` / `needs-reauth`) + token expiry |
 
 Nothing changes your league silently: a `propose_*` tool returns a **draft**;
 `execute_action` is the explicit send. Guardrails live in `config/rules.json`
@@ -109,20 +110,35 @@ Nothing changes your league silently: a `propose_*` tool returns a **draft**;
 }
 ```
 
-**Sleeper writes are unofficial.** They use Sleeper's private app API and need a
-session token (`SLEEPER_SESSION_TOKEN`) captured from a logged-in session — there
-is no password automation. When a session can't be refreshed, writes pause, reads
-keep working, and you're notified to supply a fresh token. Executing a real write
-also needs the private endpoint integration (a tracked follow-up); proposals,
-rules, and the audit log are fully functional today.
+### Enabling writes (unofficial Sleeper API)
+
+Sleeper has **no official write API**. Writes go through its private GraphQL
+endpoint (`https://sleeper.com/graphql`), authenticated with a session **JWT** —
+there is no password automation. To enable them:
+
+1. Log in at [sleeper.com](https://sleeper.com) in a desktop browser.
+2. DevTools → Network → filter `graphql` → click any request → copy the full
+   `authorization` header value (a long `eyJ...` JWT).
+3. Put it in `.env` as `SLEEPER_TOKEN=eyJ...` (never commit it; `.env` is ignored).
+
+The token is a JWT, so SleepBot reads its expiry and reports `needs-reauth`
+*before* attempting a doomed write. Check status any time with the
+`get_auth_status` tool. When the token expires or is rejected, **writes pause,
+reads keep working, and you're notified** to re-capture — no refresh endpoint
+exists, so recovery is a manual re-capture by design. Some networks/regions may
+need a **VPN** to reach the endpoint.
+
+> Protocol reverse-engineered by the community
+> ([cameron-eth/sleeper-sdk](https://github.com/cameron-eth/sleeper-sdk)); it is
+> unofficial and may change without notice.
 
 Run the tests with `npm test`.
 
 ## Roadmap
 
-- **Phase 2 (built)** — write actions (confirm-by-default), rules engine, audit
-  log, session handling. Remaining follow-up: wire Sleeper's private write
-  endpoints and capture a session token.
+- **Phase 2 (built)** — write actions (confirm-by-default) wired to Sleeper's
+  private GraphQL API, rules engine, audit log, JWT session handling with
+  fail-safe re-auth. Add `SLEEPER_TOKEN` to enable real sends.
 - **Phase 3** — local GUI (Vite/React) over the same tools; surfaces the audit
   log ("what SleepBot did while I was away")
 - **Phase 4** — `EspnAdapter` against ESPN's cookie-based API, same interface

@@ -13,6 +13,7 @@ import type {
   TrendingPlayer,
   WaiverClaimPayload,
   WriteableLeagueAdapter,
+  WriteAuthStatus,
   WriteResult,
 } from "../LeagueAdapter.js";
 import type { SessionProvider } from "../../auth/SessionProvider.js";
@@ -43,7 +44,7 @@ export class SleeperAdapter implements WriteableLeagueAdapter {
     private readonly client: SleeperApi = new SleeperClient(),
     private readonly username?: string,
     /** Session for the unofficial write API; omit for a read-only adapter. */
-    session?: SessionProvider,
+    private readonly session?: SessionProvider,
   ) {
     if (session) this.writeClient = new SleeperWriteClient(leagueId, session);
   }
@@ -183,6 +184,10 @@ export class SleeperAdapter implements WriteableLeagueAdapter {
 
   executeAddDrop(payload: AddDropPayload): Promise<WriteResult> {
     return this.write().executeAddDrop(payload);
+  }
+
+  writeAuthStatus(): WriteAuthStatus {
+    return this.session ? this.session.status() : { state: "needs-reauth" };
   }
 
   /** The write client, or a clear error if this adapter was built read-only. */

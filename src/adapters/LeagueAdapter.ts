@@ -192,6 +192,16 @@ export interface WriteResult {
   message: string;
 }
 
+/** Readable state of a platform's write authorization (for a status tool). */
+export interface WriteAuthStatus {
+  state: "ok" | "needs-reauth";
+  /** Who the credential belongs to, when known. */
+  user?: string;
+  /** Credential expiry, epoch seconds, when known. */
+  expiresAt?: number;
+  secondsRemaining?: number;
+}
+
 /**
  * A platform adapter that can also perform writes. Phase 2 only Sleeper
  * implements this. All methods follow the confirm-by-default rule at the
@@ -201,4 +211,6 @@ export interface WriteableLeagueAdapter extends LeagueAdapter {
   executeTrade(payload: TradePayload): Promise<WriteResult>;
   executeWaiverClaim(payload: WaiverClaimPayload): Promise<WriteResult>;
   executeAddDrop(payload: AddDropPayload): Promise<WriteResult>;
+  /** Current write-auth posture — does not perform any network call. */
+  writeAuthStatus(): WriteAuthStatus;
 }

@@ -1,6 +1,17 @@
 /** Auth posture of a platform's write path. */
 export type AuthState = "ok" | "needs-reauth";
 
+/** A readable snapshot of the write session, for status tools. */
+export interface SessionStatus {
+  state: AuthState;
+  /** Who the token belongs to (display name or user id), when known. */
+  user?: string;
+  /** Token expiry, epoch seconds, when known. */
+  expiresAt?: number;
+  /** Seconds until expiry (<= 0 if expired/unknown). */
+  secondsRemaining?: number;
+}
+
 /**
  * Raised when a write cannot proceed because the session is unrecoverable and
  * the server has entered `needs-reauth`. Tools translate this into a clear,
@@ -24,6 +35,8 @@ export interface SessionProvider {
   readonly state: AuthState;
   /** Current token. Throws {@link NeedsReauthError} when unrecoverable. */
   getToken(): Promise<string>;
-  /** Called after a 401: attempt refresh, else enter `needs-reauth`. */
+  /** Called after an unauthorized/expired write: attempt refresh, else enter `needs-reauth`. */
   markInvalid(): Promise<void>;
+  /** A readable status snapshot (for a status tool / the future UI). */
+  status(): SessionStatus;
 }

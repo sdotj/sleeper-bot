@@ -56,9 +56,10 @@ function buildAdapter(entry: LeagueEntry): WriteableLeagueAdapter {
       // schema.superRefine guarantees `sleeper` is present for platform "sleeper".
       // A session is always attached; with no token it sits in needs-reauth,
       // which only affects writes — reads never touch it.
+      // SLEEPER_TOKEN matches the ecosystem convention; SLEEPER_SESSION_TOKEN
+      // is kept as a fallback for anyone who set it earlier.
       const session = new SleeperSessionProvider({
-        token: process.env.SLEEPER_SESSION_TOKEN,
-        refreshToken: process.env.SLEEPER_REFRESH_TOKEN,
+        token: process.env.SLEEPER_TOKEN ?? process.env.SLEEPER_SESSION_TOKEN,
       });
       return new SleeperAdapter(entry.sleeper!.leagueId, new SleeperClient(), entry.sleeper!.username, session);
     }

@@ -223,6 +223,14 @@
           "end_line": 176
         },
         {
+          "name": "WriteAuthStatus",
+          "kind": "interface",
+          "signature": "export_statement:export interface WriteAuthStatus { state: \"ok\" | \"needs-reauth\"; /** Who the credential belongs to, when known. */ user?: string; /** Credential expiry, epoch seconds, when known. */ expiresAt?: number; secondsRemaining?: number; }",
+          "file": "src/adapters/LeagueAdapter.ts",
+          "line": 196,
+          "end_line": 203
+        },
+        {
           "name": "WriteResult",
           "kind": "interface",
           "signature": "export_statement:export interface WriteResult { ok: boolean; /** Platform's own id for the created/updated object, when available. */ platformRef?: string; message: string; }",
@@ -233,10 +241,10 @@
         {
           "name": "WriteableLeagueAdapter",
           "kind": "interface",
-          "signature": "export_statement:export interface WriteableLeagueAdapter extends LeagueAdapter { executeTrade(payload: TradePayload): Promise<WriteResult>; executeWaiverClaim(payload: WaiverClaimPayload): Promise<WriteResult>; executeAddDrop(payload: AddDropPayload): Promise<WriteResult>; }",
+          "signature": "export_statement:export interface WriteableLeagueAdapter extends LeagueAdapter { executeTrade(payload: TradePayload): Promise<WriteResult>; executeWaiverClaim(payload: WaiverClaimPayload): Promise<WriteResult>; executeAddDrop(payload: AddDropPayload): Promise<WriteResult>; /** Current write-auth posture — does not perform any network call. */ writeAuthStatus(): WriteAuthStatus; }",
           "file": "src/adapters/LeagueAdapter.ts",
-          "line": 200,
-          "end_line": 204
+          "line": 210,
+          "end_line": 216
         },
         {
           "name": "Platform",
@@ -268,6 +276,7 @@
         "src/adapters/sleeper/SleeperAdapter.test.ts",
         "src/adapters/sleeper/SleeperAdapter.ts",
         "src/adapters/sleeper/sleeperClient.ts",
+        "src/adapters/sleeper/sleeperWrite.test.ts",
         "src/adapters/sleeper/sleeperWriteClient.ts"
       ],
       "contracts": [],
@@ -275,10 +284,10 @@
         {
           "name": "SleeperAdapter",
           "kind": "class",
-          "signature": "export_statement:export class SleeperAdapter implements WriteableLeagueAdapter { readonly platform: Platform = \"sleeper\"; /** Memoized resolution of `username` -> user_id (null when unset/unknown). */ private selfUserIdPromise?: Promise<string | null>; private readonly writeClient?: SleeperWriteClient; constructor( private readonly leagueId: string, private readonly client: SleeperApi = new SleeperClient(), private readonly username?: string, /** Session for the unofficial write API; omit for a read-only adapter. */ session?: SessionProvider, ) { if (session) this.writeClient = new SleeperWriteClient(leagueId, session); } async getLeagueInfo(): Promise<LeagueInfo> { const l = await this.client.getLeague(this.leagueId); const settings = (l.scoring_settings as Record<string, number>) ?? {}; return { leagueId: this.leagueId, name: (l.name as string) ?? \"\", season: (l.season as string) ?? \"\", platform: this.platform, status: (l.status as string) ?? \"unknown\", totalRosters: (l.total_rosters as number) ?? 0, scoringType: this.inferScoringType(settings), rosterPositions: (l.roster_positions as string[]) ?? [], scoringSettings: settings, }; } async getRosters(): Promise<Roster[]> { const [rosters, ownerNames, players, selfId] = await Promise.all([ this.client.getRosters(this.leagueId), this.ownerNameMap(), this.client.getPlayers(), this.selfUserId(), ]); return rosters.map((r) => this.normalizeRoster(r, ownerNames, players, selfId)); } async getMyRoster(): Promise<Roster | null> { if (!this.username) return null; const rosters = await this.getRosters(); return rosters.find((r) => r.isYou) ?? null; } async getMatchups(week?: number): Promise<Matchup[]> { const wk = week ?? (await this.currentWeek()); const [matchups, ownerByRoster, players, myRosterId] = await Promise.all([ this.client.getMatchups(this.leagueId, wk), this.ownerByRosterMap(), this.client.getPlayers(), this.myRosterId(), ]); return matchups.map((m) => { const rosterId = (m.roster_id as number) ?? 0; return { week: wk, matchupId: (m.matchup_id as number) ?? 0, rosterId, ownerName: ownerByRoster.get(rosterId) ?? \"unknown\", isYou: myRosterId !== null && rosterId === myRosterId, points: (m.points as number) ?? 0, starters: this.buildRefs((m.starters as string[]) ?? [], players), }; }); } async getStandings(): Promise<StandingRow[]> { const rosters = await this.getRosters(); const sorted = [...rosters].sort( (a, b) => b.wins - a.wins || b.pointsFor - a.pointsFor, ); return sorted.map((r, i) => ({ rank: i + 1, rosterId: r.rosterId, ownerName: r.ownerName, isYou: r.isYou, wins: r.wins, losses: r.losses, ties: r.ties, pointsFor: r.pointsFor, pointsAgainst: r.pointsAgainst, })); } async getTransactions(week?: number): Promise<Transaction[]> { const wk = week ?? (await this.currentWeek()); const txns = await this.client.getTransactions(this.leagueId, wk); return txns.map((t) => ({ transactionId: (t.transaction_id as string) ?? \"\", type: (t.type as string) ?? \"unknown\", status: (t.status as string) ?? \"unknown\", week: wk, adds: (t.adds as Record<string, number>) ?? {}, drops: (t.drops as Record<string, number>) ?? {}, rosterIds: (t.roster_ids as number[]) ?? [], faabBid: (t.settings as { waiver_bid?: number } | null)?.waiver_bid, createdMs: (t.created as number) ?? 0, })); } async searchPlayers(query: string, filters: PlayerSearchFilters = {}): Promise<Player[]> { const players = await this.client.getPlayers(); const needle = query.trim().toLowerCase(); const position = filters.position?.toUpperCase(); const team = filters.team?.toUpperCase(); const limit = filters.limit ?? 25; const matches: Player[] = []; for (const raw of Object.values(players)) { const p = this.normalizePlayer(raw); if (needle && !this.fullName(raw).toLowerCase().includes(needle)) continue; if (position && p.position !== position) continue; if (team && (p.team ?? \"\").toUpperCase() !== team) continue; matches.push(p); if (matches.length >= limit) break; } return matches; } async getTrendingPlayers(type: \"add\" | \"drop\", limit = 25): Promise<TrendingPlayer[]> { const [trending, players] = await Promise.all([ this.client.getTrending(type, limit), this.client.getPlayers(), ]); return trending.map((t) => ({ player: this.normalizePlayer(players[t.player_id] ?? { player_id: t.player_id }), count: t.count, })); } async resolvePlayers(playerIds: string[]): Promise<PlayerRef[]> { const players = await this.client.getPlayers(); return this.buildRefs(playerIds, players); } // --- writes (unofficial Sleeper private API; see SleeperWriteClient) ------- executeTrade(payload: TradePayload): Promise<WriteResult> { return this.write().executeTrade(payload); } executeWaiverClaim(payload: WaiverClaimPayload): Promise<WriteResult> { return this.write().executeWaiverClaim(payload); } executeAddDrop(payload: AddDropPayload): Promise<WriteResult> { return this.write().executeAddDrop(payload); } /** The write client, or a clear error if this adapter was built read-only. */ private write(): SleeperWriteClient { if (!this.writeClient) { throw new Error( `Sleeper adapter for league ${this.leagueId} was created without a session, ` + `so it is read-only. Configure a session token to enable writes.`, ); } return this.writeClient; } // --- internal helpers ----------------------------------------------------- private normalizeRoster( r: Record<string, unknown>, ownerNames: Map<string, string>, players: Record<string, SleeperPlayer>, selfUserId: string | null, ): Roster { const settings = (r.settings as Record<string, number>) ?? {}; const ownerId = (r.owner_id as string) ?? \"\"; const all = (r.players as string[]) ?? []; const starters = (r.starters as string[]) ?? []; const reserve = (r.reserve as string[] | null) ?? []; const taxi = (r.taxi as string[] | null) ?? []; // Bench = rostered players that are neither starting nor on IR/taxi. const nonBench = new Set([...starters, ...reserve, ...taxi]); const bench = all.filter((id) => !nonBench.has(id)); return { rosterId: (r.roster_id as number) ?? 0, ownerId, ownerName: ownerNames.get(ownerId) ?? ownerId ?? \"unknown\", isYou: selfUserId !== null && ownerId === selfUserId, starters: this.buildRefs(starters, players), bench: this.buildRefs(bench, players), reserve: this.buildRefs(reserve, players), taxi: this.buildRefs(taxi, players), wins: settings.wins ?? 0, losses: settings.losses ?? 0, ties: settings.ties ?? 0, // Sleeper stores points as whole + hundredths (fpts + fpts_decimal). pointsFor: this.points(settings.fpts, settings.fpts_decimal), pointsAgainst: this.points(settings.fpts_against, settings.fpts_against_decimal), }; } /** Join a list of player ids to name/position/team, preserving order. */ private buildRefs(ids: string[], players: Record<string, SleeperPlayer>): PlayerRef[] { return ids.map((id) => { const raw = players[id] ?? { player_id: id }; return { playerId: id, name: this.fullName(raw), position: raw.position ?? \"\", team: raw.team ?? null, }; }); } private points(whole?: number, decimal?: number): number { return (whole ?? 0) + (decimal ?? 0) / 100; } private normalizePlayer(raw: SleeperPlayer): Player { return { playerId: raw.player_id, fullName: this.fullName(raw), position: raw.position ?? \"\", team: raw.team ?? null, status: raw.status ?? null, }; } private fullName(raw: SleeperPlayer): string { if (raw.full_name) return raw.full_name; const joined = [raw.first_name, raw.last_name].filter(Boolean).join(\" \"); return joined || raw.player_id; } private inferScoringType(settings: Record<string, number>): string { const ppr = settings.rec ?? 0; if (ppr >= 1) return \"ppr\"; if (ppr > 0) return \"half_ppr\"; return \"standard\"; } /** owner_id (user_id) -> display name. */ private async ownerNameMap(): Promise<Map<string, string>> { const users = await this.client.getUsers(this.leagueId); const map = new Map<string, string>(); for (const u of users) { const id = (u.user_id as string) ?? \"\"; const meta = (u.metadata as { team_name?: string } | null) ?? null; map.set(id, meta?.team_name || (u.display_name as string) || id); } return map; } /** roster_id -> owner display name, joining rosters to users. */ private async ownerByRosterMap(): Promise<Map<number, string>> { const [rosters, ownerNames] = await Promise.all([ this.client.getRosters(this.leagueId), this.ownerNameMap(), ]); const map = new Map<number, string>(); for (const r of rosters) { const rosterId = (r.roster_id as number) ?? 0; const ownerId = (r.owner_id as string) ?? \"\"; map.set(rosterId, ownerNames.get(ownerId) ?? ownerId ?? \"unknown\"); } return map; } /** Resolve the configured username to a Sleeper user_id, memoized. */ private async selfUserId(): Promise<string | null> { if (!this.username) return null; if (!this.selfUserIdPromise) { this.selfUserIdPromise = this.client .getUserByName(this.username) .then((u) => (u?.user_id as string) ?? null) .catch(() => null); } return this.selfUserIdPromise; } /** The configured user's roster_id in this league, or null. */ private async myRosterId(): Promise<number | null> { const selfId = await this.selfUserId(); if (!selfId) return null; const rosters = await this.client.getRosters(this.leagueId); const mine = rosters.find((r) => (r.owner_id as string) === selfId); return mine ? ((mine.roster_id as number) ?? null) : null; } private async currentWeek(): Promise<number> { const state = await this.client.getNflState(); return state.week && state.week > 0 ? state.week : 1; } }",
+          "signature": "export_statement:export class SleeperAdapter implements WriteableLeagueAdapter { readonly platform: Platform = \"sleeper\"; /** Memoized resolution of `username` -> user_id (null when unset/unknown). */ private selfUserIdPromise?: Promise<string | null>; private readonly writeClient?: SleeperWriteClient; constructor( private readonly leagueId: string, private readonly client: SleeperApi = new SleeperClient(), private readonly username?: string, /** Session for the unofficial write API; omit for a read-only adapter. */ private readonly session?: SessionProvider, ) { if (session) this.writeClient = new SleeperWriteClient(leagueId, session); } async getLeagueInfo(): Promise<LeagueInfo> { const l = await this.client.getLeague(this.leagueId); const settings = (l.scoring_settings as Record<string, number>) ?? {}; return { leagueId: this.leagueId, name: (l.name as string) ?? \"\", season: (l.season as string) ?? \"\", platform: this.platform, status: (l.status as string) ?? \"unknown\", totalRosters: (l.total_rosters as number) ?? 0, scoringType: this.inferScoringType(settings), rosterPositions: (l.roster_positions as string[]) ?? [], scoringSettings: settings, }; } async getRosters(): Promise<Roster[]> { const [rosters, ownerNames, players, selfId] = await Promise.all([ this.client.getRosters(this.leagueId), this.ownerNameMap(), this.client.getPlayers(), this.selfUserId(), ]); return rosters.map((r) => this.normalizeRoster(r, ownerNames, players, selfId)); } async getMyRoster(): Promise<Roster | null> { if (!this.username) return null; const rosters = await this.getRosters(); return rosters.find((r) => r.isYou) ?? null; } async getMatchups(week?: number): Promise<Matchup[]> { const wk = week ?? (await this.currentWeek()); const [matchups, ownerByRoster, players, myRosterId] = await Promise.all([ this.client.getMatchups(this.leagueId, wk), this.ownerByRosterMap(), this.client.getPlayers(), this.myRosterId(), ]); return matchups.map((m) => { const rosterId = (m.roster_id as number) ?? 0; return { week: wk, matchupId: (m.matchup_id as number) ?? 0, rosterId, ownerName: ownerByRoster.get(rosterId) ?? \"unknown\", isYou: myRosterId !== null && rosterId === myRosterId, points: (m.points as number) ?? 0, starters: this.buildRefs((m.starters as string[]) ?? [], players), }; }); } async getStandings(): Promise<StandingRow[]> { const rosters = await this.getRosters(); const sorted = [...rosters].sort( (a, b) => b.wins - a.wins || b.pointsFor - a.pointsFor, ); return sorted.map((r, i) => ({ rank: i + 1, rosterId: r.rosterId, ownerName: r.ownerName, isYou: r.isYou, wins: r.wins, losses: r.losses, ties: r.ties, pointsFor: r.pointsFor, pointsAgainst: r.pointsAgainst, })); } async getTransactions(week?: number): Promise<Transaction[]> { const wk = week ?? (await this.currentWeek()); const txns = await this.client.getTransactions(this.leagueId, wk); return txns.map((t) => ({ transactionId: (t.transaction_id as string) ?? \"\", type: (t.type as string) ?? \"unknown\", status: (t.status as string) ?? \"unknown\", week: wk, adds: (t.adds as Record<string, number>) ?? {}, drops: (t.drops as Record<string, number>) ?? {}, rosterIds: (t.roster_ids as number[]) ?? [], faabBid: (t.settings as { waiver_bid?: number } | null)?.waiver_bid, createdMs: (t.created as number) ?? 0, })); } async searchPlayers(query: string, filters: PlayerSearchFilters = {}): Promise<Player[]> { const players = await this.client.getPlayers(); const needle = query.trim().toLowerCase(); const position = filters.position?.toUpperCase(); const team = filters.team?.toUpperCase(); const limit = filters.limit ?? 25; const matches: Player[] = []; for (const raw of Object.values(players)) { const p = this.normalizePlayer(raw); if (needle && !this.fullName(raw).toLowerCase().includes(needle)) continue; if (position && p.position !== position) continue; if (team && (p.team ?? \"\").toUpperCase() !== team) continue; matches.push(p); if (matches.length >= limit) break; } return matches; } async getTrendingPlayers(type: \"add\" | \"drop\", limit = 25): Promise<TrendingPlayer[]> { const [trending, players] = await Promise.all([ this.client.getTrending(type, limit), this.client.getPlayers(), ]); return trending.map((t) => ({ player: this.normalizePlayer(players[t.player_id] ?? { player_id: t.player_id }), count: t.count, })); } async resolvePlayers(playerIds: string[]): Promise<PlayerRef[]> { const players = await this.client.getPlayers(); return this.buildRefs(playerIds, players); } // --- writes (unofficial Sleeper private API; see SleeperWriteClient) ------- executeTrade(payload: TradePayload): Promise<WriteResult> { return this.write().executeTrade(payload); } executeWaiverClaim(payload: WaiverClaimPayload): Promise<WriteResult> { return this.write().executeWaiverClaim(payload); } executeAddDrop(payload: AddDropPayload): Promise<WriteResult> { return this.write().executeAddDrop(payload); } writeAuthStatus(): WriteAuthStatus { return this.session ? this.session.status() : { state: \"needs-reauth\" }; } /** The write client, or a clear error if this adapter was built read-only. */ private write(): SleeperWriteClient { if (!this.writeClient) { throw new Error( `Sleeper adapter for league ${this.leagueId} was created without a session, ` + `so it is read-only. Configure a session token to enable writes.`, ); } return this.writeClient; } // --- internal helpers ----------------------------------------------------- private normalizeRoster( r: Record<string, unknown>, ownerNames: Map<string, string>, players: Record<string, SleeperPlayer>, selfUserId: string | null, ): Roster { const settings = (r.settings as Record<string, number>) ?? {}; const ownerId = (r.owner_id as string) ?? \"\"; const all = (r.players as string[]) ?? []; const starters = (r.starters as string[]) ?? []; const reserve = (r.reserve as string[] | null) ?? []; const taxi = (r.taxi as string[] | null) ?? []; // Bench = rostered players that are neither starting nor on IR/taxi. const nonBench = new Set([...starters, ...reserve, ...taxi]); const bench = all.filter((id) => !nonBench.has(id)); return { rosterId: (r.roster_id as number) ?? 0, ownerId, ownerName: ownerNames.get(ownerId) ?? ownerId ?? \"unknown\", isYou: selfUserId !== null && ownerId === selfUserId, starters: this.buildRefs(starters, players), bench: this.buildRefs(bench, players), reserve: this.buildRefs(reserve, players), taxi: this.buildRefs(taxi, players), wins: settings.wins ?? 0, losses: settings.losses ?? 0, ties: settings.ties ?? 0, // Sleeper stores points as whole + hundredths (fpts + fpts_decimal). pointsFor: this.points(settings.fpts, settings.fpts_decimal), pointsAgainst: this.points(settings.fpts_against, settings.fpts_against_decimal), }; } /** Join a list of player ids to name/position/team, preserving order. */ private buildRefs(ids: string[], players: Record<string, SleeperPlayer>): PlayerRef[] { return ids.map((id) => { const raw = players[id] ?? { player_id: id }; return { playerId: id, name: this.fullName(raw), position: raw.position ?? \"\", team: raw.team ?? null, }; }); } private points(whole?: number, decimal?: number): number { return (whole ?? 0) + (decimal ?? 0) / 100; } private normalizePlayer(raw: SleeperPlayer): Player { return { playerId: raw.player_id, fullName: this.fullName(raw), position: raw.position ?? \"\", team: raw.team ?? null, status: raw.status ?? null, }; } private fullName(raw: SleeperPlayer): string { if (raw.full_name) return raw.full_name; const joined = [raw.first_name, raw.last_name].filter(Boolean).join(\" \"); return joined || raw.player_id; } private inferScoringType(settings: Record<string, number>): string { const ppr = settings.rec ?? 0; if (ppr >= 1) return \"ppr\"; if (ppr > 0) return \"half_ppr\"; return \"standard\"; } /** owner_id (user_id) -> display name. */ private async ownerNameMap(): Promise<Map<string, string>> { const users = await this.client.getUsers(this.leagueId); const map = new Map<string, string>(); for (const u of users) { const id = (u.user_id as string) ?? \"\"; const meta = (u.metadata as { team_name?: string } | null) ?? null; map.set(id, meta?.team_name || (u.display_name as string) || id); } return map; } /** roster_id -> owner display name, joining rosters to users. */ private async ownerByRosterMap(): Promise<Map<number, string>> { const [rosters, ownerNames] = await Promise.all([ this.client.getRosters(this.leagueId), this.ownerNameMap(), ]); const map = new Map<number, string>(); for (const r of rosters) { const rosterId = (r.roster_id as number) ?? 0; const ownerId = (r.owner_id as string) ?? \"\"; map.set(rosterId, ownerNames.get(ownerId) ?? ownerId ?? \"unknown\"); } return map; } /** Resolve the configured username to a Sleeper user_id, memoized. */ private async selfUserId(): Promise<string | null> { if (!this.username) return null; if (!this.selfUserIdPromise) { this.selfUserIdPromise = this.client .getUserByName(this.username) .then((u) => (u?.user_id as string) ?? null) .catch(() => null); } return this.selfUserIdPromise; } /** The configured user's roster_id in this league, or null. */ private async myRosterId(): Promise<number | null> { const selfId = await this.selfUserId(); if (!selfId) return null; const rosters = await this.client.getRosters(this.leagueId); const mine = rosters.find((r) => (r.owner_id as string) === selfId); return mine ? ((mine.roster_id as number) ?? null) : null; } private async currentWeek(): Promise<number> { const state = await this.client.getNflState(); return state.week && state.week > 0 ? state.week : 1; } }",
           "file": "src/adapters/sleeper/SleeperAdapter.ts",
-          "line": 34,
-          "end_line": 327
+          "line": 35,
+          "end_line": 332
         },
         {
           "name": "SleeperClient",
@@ -291,10 +300,42 @@
         {
           "name": "SleeperWriteClient",
           "kind": "class",
-          "signature": "export_statement:export class SleeperWriteClient { constructor( private readonly leagueId: string, private readonly session: SessionProvider, ) {} executeTrade(payload: TradePayload): Promise<WriteResult> { return this.notYetWired(\"trade\", payload); } executeWaiverClaim(payload: WaiverClaimPayload): Promise<WriteResult> { return this.notYetWired(\"waiver claim\", payload); } executeAddDrop(payload: AddDropPayload): Promise<WriteResult> { return this.notYetWired(\"add/drop\", payload); } /** * Shared path: require a session, then report that the private endpoint isn't * wired yet. Kept in one place so wiring real writes later is a single change. */ private async notYetWired(kind: string, _payload: unknown): Promise<WriteResult> { // Throws NeedsReauthError when no session is configured — the honest state // for a fresh install with no captured token. await this.session.getToken(); throw new Error( `Executing a real Sleeper ${kind} is not yet wired to Sleeper's private ` + `API (Phase 2 follow-up). The proposal was validated, recorded, and stored; ` + `only the final send is pending endpoint integration for league ${this.leagueId}.`, ); } }",
+          "signature": "export_statement:export class SleeperWriteClient { constructor( private readonly leagueId: string, private readonly session: SessionProvider, private readonly fetchFn: FetchFn = defaultFetch, ) {} async executeTrade(payload: TradePayload): Promise<WriteResult> { const data = await this.gql(\"propose_trade\", MUTATIONS.propose_trade, tradeVariables(this.leagueId, payload)); return this.toResult(\"propose_trade\", data); } async executeWaiverClaim(payload: WaiverClaimPayload): Promise<WriteResult> { const data = await this.gql(\"create_waiver_claim\", MUTATIONS.create_waiver_claim, waiverVariables(this.leagueId, payload)); return this.toResult(\"create_waiver_claim\", data); } async executeAddDrop(payload: AddDropPayload): Promise<WriteResult> { if (!payload.addPlayerId && !payload.dropPlayerId) { throw new Error(\"add/drop needs at least one of addPlayerId or dropPlayerId\"); } const data = await this.gql(\"create_free_agent\", MUTATIONS.create_free_agent, addDropVariables(this.leagueId, payload)); return this.toResult(\"create_free_agent\", data); } private toResult(op: string, data: Record<string, unknown>): WriteResult { const txn = (data[op] as TxnResult) ?? {}; return { ok: true, platformRef: txn.transaction_id, message: `${op} submitted (status: ${txn.status ?? \"unknown\"})`, }; } /** Send one GraphQL operation; map Sleeper's error shapes onto our errors. */ private async gql( opName: string, query: string, variables: Record<string, unknown>, ): Promise<Record<string, unknown>> { const token = await this.session.getToken(); // throws NeedsReauthError if no session const res = await this.fetchFn(SLEEPER_GRAPHQL_URL, { method: \"POST\", headers: { authorization: token, \"content-type\": \"application/json\", accept: \"application/json\", origin: \"https://sleeper.com\", referer: \"https://sleeper.com/\", \"x-sleeper-graphql-op\": opName, \"user-agent\": \"sleepbot/0.1\", }, body: JSON.stringify({ operationName: opName, query, variables }), }); const text = await res.text(); let body: { data?: Record<string, unknown>; errors?: unknown }; try { body = JSON.parse(text); } catch { throw new Error(`Sleeper GraphQL returned non-JSON (HTTP ${res.status}): ${text.slice(0, 200)}`); } const errors = normalizeErrors(body.errors); if (errors.length > 0) { if (errors.some(isAuthError)) { await this.session.markInvalid(); throw new NeedsReauthError( \"Sleeper rejected the token (invalid/expired). Writes paused; supply a fresh SLEEPER_TOKEN.\", ); } throw new Error(`Sleeper GraphQL error: ${errors.map((e) => e.message).join(\"; \")}`); } return body.data ?? {}; } }",
           "file": "src/adapters/sleeper/sleeperWriteClient.ts",
-          "line": 24,
-          "end_line": 56
+          "line": 124,
+          "end_line": 199
+        },
+        {
+          "name": "export const SLEEPER_GRAPHQL_URL = \"https://sleeper.com/graphql\";",
+          "kind": "variable",
+          "signature": "export_statement:export const SLEEPER_GRAPHQL_URL = \"https://sleeper.com/graphql\";",
+          "file": "src/adapters/sleeper/sleeperWriteClient.ts",
+          "line": 23,
+          "end_line": 23
+        },
+        {
+          "name": "addDropVariables",
+          "kind": "function",
+          "signature": "export_statement:export function addDropVariables(leagueId: string, p: AddDropPayload) { return { league_id: leagueId, roster_id: p.rosterId, adds: p.addPlayerId ? { [p.addPlayerId]: p.rosterId } : {}, drops: p.dropPlayerId ? { [p.dropPlayerId]: p.rosterId } : {}, }; }",
+          "file": "src/adapters/sleeper/sleeperWriteClient.ts",
+          "line": 71,
+          "end_line": 78
+        },
+        {
+          "name": "tradeVariables",
+          "kind": "function",
+          "signature": "export_statement:export function tradeVariables(leagueId: string, p: TradePayload) { const k_adds: string[] = []; const v_adds: number[] = []; const k_drops: string[] = []; const v_drops: number[] = []; for (const pid of p.sendPlayerIds) { k_adds.push(pid); v_adds.push(p.toRosterId); // the other team receives it k_drops.push(pid); v_drops.push(p.fromRosterId); // you send it } for (const pid of p.receivePlayerIds) { k_adds.push(pid); v_adds.push(p.fromRosterId); // you receive it k_drops.push(pid); v_drops.push(p.toRosterId); // the other team sends it } return { league_id: leagueId, k_adds, v_adds, k_drops, v_drops, draft_picks: [] as string[], waiver_budget: [] as string[], expires_at: null as number | null, }; }",
+          "file": "src/adapters/sleeper/sleeperWriteClient.ts",
+          "line": 42,
+          "end_line": 69
+        },
+        {
+          "name": "waiverVariables",
+          "kind": "function",
+          "signature": "export_statement:export function waiverVariables(leagueId: string, p: WaiverClaimPayload) { return { league_id: leagueId, roster_id: p.rosterId, adds: { [p.addPlayerId]: p.rosterId }, drops: p.dropPlayerId ? { [p.dropPlayerId]: p.rosterId } : {}, waiver_budget: p.faabBid ?? 0, }; }",
+          "file": "src/adapters/sleeper/sleeperWriteClient.ts",
+          "line": 80,
+          "end_line": 88
         },
         {
           "name": "SleeperApi",
@@ -319,6 +360,14 @@
           "file": "src/adapters/sleeper/sleeperClient.ts",
           "line": 16,
           "end_line": 24
+        },
+        {
+          "name": "FetchFn",
+          "kind": "type",
+          "signature": "export_statement:export type FetchFn = ( url: string, init: { method: string; headers: Record<string, string>; body: string }, ) => Promise<{ status: number; text(): Promise<string> }>;",
+          "file": "src/adapters/sleeper/sleeperWriteClient.ts",
+          "line": 26,
+          "end_line": 29
         }
       ]
     },
@@ -424,7 +473,8 @@
         "src/auth/SessionProvider.ts",
         "src/auth/auth.test.ts",
         "src/auth/index.ts",
-        "src/auth/sleeperSession.ts"
+        "src/auth/sleeperSession.ts",
+        "src/auth/token.ts"
       ],
       "contracts": [],
       "symbols": [
@@ -433,32 +483,64 @@
           "kind": "class",
           "signature": "export_statement:export class NeedsReauthError extends Error { constructor(message: string) { super(message); this.name = \"NeedsReauthError\"; } }",
           "file": "src/auth/SessionProvider.ts",
-          "line": 9,
-          "end_line": 14
+          "line": 20,
+          "end_line": 25
         },
         {
           "name": "SleeperSessionProvider",
           "kind": "class",
-          "signature": "export_statement:export class SleeperSessionProvider implements SessionProvider { private _state: AuthState = \"ok\"; private token?: string; private readonly refreshToken?: string; private readonly notify: (message: string) => void; constructor(opts: SleeperSessionOptions = {}) { this.token = opts.token; this.refreshToken = opts.refreshToken; this.notify = opts.notify ?? ((m) => console.error(`[auth] ${m}`)); if (!this.token) this._state = \"needs-reauth\"; } get state(): AuthState { return this._state; } async getToken(): Promise<string> { if (this._state === \"needs-reauth\" || !this.token) { throw new NeedsReauthError( \"Sleeper write session is unavailable. Supply a fresh session token \" + \"(SLEEPER_SESSION_TOKEN) captured from a logged-in Sleeper session.\", ); } return this.token; } async markInvalid(): Promise<void> { if (await this.tryRefresh()) return; this._state = \"needs-reauth\"; this.token = undefined; this.notify( \"Sleeper session expired and could not be refreshed. Writes are paused \" + \"until a new session token is supplied. Reads are unaffected.\", ); } /** * Attempt a token-refresh EXCHANGE (not a password login). Returns true on * success. Sleeper's private refresh mechanics are not publicly documented, * so this is a stub returning false today; when a refresh endpoint is * confirmed, implement it here — everything else already handles both paths. */ private async tryRefresh(): Promise<boolean> { if (!this.refreshToken) return false; // TODO(phase2): call Sleeper's private token-refresh endpoint with // this.refreshToken, set this.token on success. Never send a password. return false; } }",
+          "signature": "export_statement:export class SleeperSessionProvider implements SessionProvider { private token?: string; private tokenInfo?: TokenInfo; private invalidated = false; private readonly notify: (message: string) => void; constructor(opts: SleeperSessionOptions = {}) { this.notify = opts.notify ?? ((m) => console.error(`[auth] ${m}`)); this.token = opts.token; if (!this.token) return; // state computes to needs-reauth try { this.tokenInfo = inspectToken(this.token); } catch { this.token = undefined; this.notify(`Sleeper token is not a valid JWT. ${CAPTURE_HINT}`); return; } if (isExpired(this.tokenInfo)) { this.notify(`Sleeper token is expired. ${CAPTURE_HINT}`); } } get state(): AuthState { if (this.invalidated || !this.token || !this.tokenInfo) return \"needs-reauth\"; return isExpired(this.tokenInfo) ? \"needs-reauth\" : \"ok\"; } async getToken(): Promise<string> { if (this.state === \"needs-reauth\" || !this.token) { throw new NeedsReauthError(`Sleeper write session unavailable. ${CAPTURE_HINT}`); } return this.token; } async markInvalid(): Promise<void> { // No refresh endpoint exists for Sleeper's private API — a JWT is // re-captured manually — so we fail safe rather than attempt a login. this.invalidated = true; this.notify( `Sleeper session was rejected (unauthorized or expired). Writes are paused; ` + `reads are unaffected. ${CAPTURE_HINT}`, ); } status(): SessionStatus { const expiresAt = this.tokenInfo?.expiresAt; return { state: this.state, user: this.tokenInfo?.displayName || this.tokenInfo?.userId || undefined, expiresAt: expiresAt && expiresAt > 0 ? expiresAt : undefined, secondsRemaining: expiresAt && expiresAt > 0 ? Math.max(0, Math.floor(expiresAt - Date.now() / 1000)) : undefined, }; } }",
           "file": "src/auth/sleeperSession.ts",
-          "line": 31,
-          "end_line": 80
+          "line": 36,
+          "end_line": 90
+        },
+        {
+          "name": "inspectToken",
+          "kind": "function",
+          "signature": "export_statement:export function inspectToken(jwt: string): TokenInfo { const parts = jwt.split(\".\"); if (parts.length !== 3) { throw new Error(\"token does not look like a JWT (expected 3 dot-separated parts)\"); } const payload = JSON.parse(Buffer.from(parts[1], \"base64url\").toString(\"utf8\")) as Record< string, unknown >; return { userId: String(payload.user_id ?? \"\"), displayName: String(payload.display_name ?? \"\"), issuedAt: Number(payload.iat ?? 0), expiresAt: Number(payload.exp ?? 0), }; }",
+          "file": "src/auth/token.ts",
+          "line": 17,
+          "end_line": 32
+        },
+        {
+          "name": "isExpired",
+          "kind": "function",
+          "signature": "export_statement:export function isExpired(info: TokenInfo, nowMs: number = Date.now()): boolean { return info.expiresAt > 0 && nowMs / 1000 >= info.expiresAt; }",
+          "file": "src/auth/token.ts",
+          "line": 35,
+          "end_line": 37
         },
         {
           "name": "SessionProvider",
           "kind": "interface",
-          "signature": "export_statement:export interface SessionProvider { readonly state: AuthState; /** Current token. Throws {@link NeedsReauthError} when unrecoverable. */ getToken(): Promise<string>; /** Called after a 401: attempt refresh, else enter `needs-reauth`. */ markInvalid(): Promise<void>; }",
+          "signature": "export_statement:export interface SessionProvider { readonly state: AuthState; /** Current token. Throws {@link NeedsReauthError} when unrecoverable. */ getToken(): Promise<string>; /** Called after an unauthorized/expired write: attempt refresh, else enter `needs-reauth`. */ markInvalid(): Promise<void>; /** A readable status snapshot (for a status tool / the future UI). */ status(): SessionStatus; }",
           "file": "src/auth/SessionProvider.ts",
-          "line": 23,
-          "end_line": 29
+          "line": 34,
+          "end_line": 42
+        },
+        {
+          "name": "SessionStatus",
+          "kind": "interface",
+          "signature": "export_statement:export interface SessionStatus { state: AuthState; /** Who the token belongs to (display name or user id), when known. */ user?: string; /** Token expiry, epoch seconds, when known. */ expiresAt?: number; /** Seconds until expiry (<= 0 if expired/unknown). */ secondsRemaining?: number; }",
+          "file": "src/auth/SessionProvider.ts",
+          "line": 5,
+          "end_line": 13
         },
         {
           "name": "SleeperSessionOptions",
           "kind": "interface",
-          "signature": "export_statement:export interface SleeperSessionOptions { /** Session token captured from a logged-in Sleeper session (env:SLEEPER_SESSION_TOKEN). */ token?: string; /** Refresh token, if Sleeper issues one (env:SLEEPER_REFRESH_TOKEN). */ refreshToken?: string; /** * Fail-safe notifier invoked when the session becomes unrecoverable. Wired to * the Phase-3 UI / push later; defaults to stderr. */ notify?: (message: string) => void; }",
+          "signature": "export_statement:export interface SleeperSessionOptions { /** Session JWT captured from a logged-in Sleeper session (env:SLEEPER_TOKEN). */ token?: string; /** * Fail-safe notifier invoked when the session becomes unusable. Wired to the * Phase-3 UI / push later; defaults to stderr. */ notify?: (message: string) => void; }",
           "file": "src/auth/sleeperSession.ts",
-          "line": 7,
+          "line": 9,
           "end_line": 17
+        },
+        {
+          "name": "TokenInfo",
+          "kind": "interface",
+          "signature": "export_statement:export interface TokenInfo { userId: string; displayName: string; /** Epoch seconds. */ issuedAt: number; /** Epoch seconds; 0 if the token carries no exp. */ expiresAt: number; }",
+          "file": "src/auth/token.ts",
+          "line": 7,
+          "end_line": 14
         },
         {
           "name": "AuthState",
@@ -469,20 +551,28 @@
           "end_line": 2
         },
         {
-          "name": "export {\n  NeedsReauthError,\n  type AuthState,\n  type SessionProvider,\n} from \"./SessionProvider.js\";",
+          "name": "export {\n  NeedsReauthError,\n  type AuthState,\n  type SessionProvider,\n  type SessionStatus,\n} from \"./SessionProvider.js\";",
           "kind": "other",
-          "signature": "export_statement:export { NeedsReauthError, type AuthState, type SessionProvider, } from \"./SessionProvider.js\";",
+          "signature": "export_statement:export { NeedsReauthError, type AuthState, type SessionProvider, type SessionStatus, } from \"./SessionProvider.js\";",
           "file": "src/auth/index.ts",
           "line": 1,
-          "end_line": 5
+          "end_line": 6
         },
         {
           "name": "export {\n  SleeperSessionProvider,\n  type SleeperSessionOptions,\n} from \"./sleeperSession.js\";",
           "kind": "other",
           "signature": "export_statement:export { SleeperSessionProvider, type SleeperSessionOptions, } from \"./sleeperSession.js\";",
           "file": "src/auth/index.ts",
-          "line": 6,
-          "end_line": 9
+          "line": 7,
+          "end_line": 10
+        },
+        {
+          "name": "export { inspectToken, isExpired, type TokenInfo } from \"./token.js\";",
+          "kind": "other",
+          "signature": "export_statement:export { inspectToken, isExpired, type TokenInfo } from \"./token.js\";",
+          "file": "src/auth/index.ts",
+          "line": 11,
+          "end_line": 11
         }
       ]
     },
@@ -707,6 +797,7 @@
       "files": [
         "src/tools/_shared.ts",
         "src/tools/executeAction.ts",
+        "src/tools/getAuthStatus.ts",
         "src/tools/getLeagueInfo.ts",
         "src/tools/getMatchups.ts",
         "src/tools/getMyRoster.ts",
@@ -735,34 +826,34 @@
         {
           "name": "registerAllTools",
           "kind": "function",
-          "signature": "export_statement:export async function registerAllTools(server: McpServer, config: ConfigRegistry): Promise<void> { const ctx: ToolContext = await buildToolContext(config); // Phase 1 — read-only registerListLeagues(server, ctx); registerGetLeagueInfo(server, ctx); registerGetRosters(server, ctx); registerGetMyRoster(server, ctx); registerGetMatchups(server, ctx); registerGetStandings(server, ctx); registerGetTransactions(server, ctx); registerSearchPlayers(server, ctx); registerGetTrendingPlayers(server, ctx); // Phase 2 — write actions (confirm-by-default) registerProposeTrade(server, ctx); registerProposeWaiverClaim(server, ctx); registerProposeAddDrop(server, ctx); registerExecuteAction(server, ctx); registerListPendingActions(server, ctx); }",
+          "signature": "export_statement:export async function registerAllTools(server: McpServer, config: ConfigRegistry): Promise<void> { const ctx: ToolContext = await buildToolContext(config); // Phase 1 — read-only registerListLeagues(server, ctx); registerGetLeagueInfo(server, ctx); registerGetRosters(server, ctx); registerGetMyRoster(server, ctx); registerGetMatchups(server, ctx); registerGetStandings(server, ctx); registerGetTransactions(server, ctx); registerSearchPlayers(server, ctx); registerGetTrendingPlayers(server, ctx); // Phase 2 — write actions (confirm-by-default) registerProposeTrade(server, ctx); registerProposeWaiverClaim(server, ctx); registerProposeAddDrop(server, ctx); registerExecuteAction(server, ctx); registerListPendingActions(server, ctx); registerGetAuthStatus(server, ctx); }",
           "file": "src/tools/index.ts",
-          "line": 24,
-          "end_line": 44
+          "line": 25,
+          "end_line": 46
         },
         {
           "name": "guard",
           "kind": "function",
           "signature": "export_statement:export function guard<Args>(handler: (args: Args) => Promise<unknown>) { return async (args: Args) => { try { return jsonResult(await handler(args)); } catch (err) { return { isError: true as const, content: [{ type: \"text\" as const, text: `Error: ${(err as Error).message}` }], }; } }; }",
           "file": "src/tools/_shared.ts",
-          "line": 108,
-          "end_line": 119
+          "line": 109,
+          "end_line": 120
         },
         {
           "name": "jsonResult",
           "kind": "function",
           "signature": "export_statement:export function jsonResult(data: unknown) { return { content: [{ type: \"text\" as const, text: JSON.stringify(data, null, 2) }] }; }",
           "file": "src/tools/_shared.ts",
-          "line": 100,
-          "end_line": 102
+          "line": 101,
+          "end_line": 103
         },
         {
           "name": "proposalOutcome",
           "kind": "function",
           "signature": "export_statement:export function proposalOutcome(action: ProposedAction) { if (action.status === \"rejected\") { return { ...action, note: `BLOCKED by a rule — nothing was stored or sent. ${action.verdict.blockedReasons.join(\"; \")}`, }; } const warn = action.verdict.warnings.length ? ` Warnings: ${action.verdict.warnings.join(\"; \")}.` : \"\"; return { ...action, note: `Proposed as a DRAFT — nothing has been sent. To send it, call ` + `execute_action with actionId \"${action.id}\".${warn}`, }; }",
           "file": "src/tools/_shared.ts",
-          "line": 81,
-          "end_line": 97
+          "line": 82,
+          "end_line": 98
         },
         {
           "name": "registerExecuteAction",
@@ -771,6 +862,14 @@
           "file": "src/tools/executeAction.ts",
           "line": 6,
           "end_line": 22
+        },
+        {
+          "name": "registerGetAuthStatus",
+          "kind": "function",
+          "signature": "export_statement:export function registerGetAuthStatus(server: McpServer, ctx: ToolContext): void { server.registerTool( \"get_auth_status\", { title: \"Get write-auth status\", description: \"Report whether SleepBot can perform WRITE actions for a league: 'ok' or \" + \"'needs-reauth', plus whose token is in use and when it expires. Reads never \" + \"need auth. If state is needs-reauth, capture a fresh token (DevTools → Network → \" + \"any sleeper.com graphql request → 'authorization' header) and set SLEEPER_TOKEN.\", inputSchema: { leagueId: z.string().describe(\"Your league label from list_leagues.\"), }, }, guard(async ({ leagueId }: { leagueId: string }) => { const status = ctx.adapterFor(leagueId).writeAuthStatus(); const note = status.state === \"ok\" ? \"Writes are authorized.\" : \"Writes are paused (needs-reauth). Reads still work. Set a fresh SLEEPER_TOKEN.\"; return { ...status, note }; }), ); }",
+          "file": "src/tools/getAuthStatus.ts",
+          "line": 6,
+          "end_line": 29
         },
         {
           "name": "registerGetLeagueInfo",

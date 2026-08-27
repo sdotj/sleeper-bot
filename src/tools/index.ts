@@ -15,6 +15,7 @@ import { registerProposeWaiverClaim } from "./proposeWaiverClaim.js";
 import { registerProposeAddDrop } from "./proposeAddDrop.js";
 import { registerExecuteAction } from "./executeAction.js";
 import { registerListPendingActions } from "./listPendingActions.js";
+import { registerGetAuthStatus } from "./getAuthStatus.js";
 
 /**
  * Build the tool context (loads config-driven deps) and register every tool
@@ -41,4 +42,5 @@ export async function registerAllTools(server: McpServer, config: ConfigRegistry
   registerProposeAddDrop(server, ctx);
   registerExecuteAction(server, ctx);
   registerListPendingActions(server, ctx);
+  registerGetAuthStatus(server, ctx);
 }

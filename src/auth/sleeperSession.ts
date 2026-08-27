@@ -2,79 +2,89 @@ import {
   NeedsReauthError,
   type AuthState,
   type SessionProvider,
+  type SessionStatus,
 } from "./SessionProvider.js";
+import { inspectToken, isExpired, type TokenInfo } from "./token.js";
 
 export interface SleeperSessionOptions {
-  /** Session token captured from a logged-in Sleeper session (env:SLEEPER_SESSION_TOKEN). */
+  /** Session JWT captured from a logged-in Sleeper session (env:SLEEPER_TOKEN). */
   token?: string;
-  /** Refresh token, if Sleeper issues one (env:SLEEPER_REFRESH_TOKEN). */
-  refreshToken?: string;
   /**
-   * Fail-safe notifier invoked when the session becomes unrecoverable. Wired to
-   * the Phase-3 UI / push later; defaults to stderr.
+   * Fail-safe notifier invoked when the session becomes unusable. Wired to the
+   * Phase-3 UI / push later; defaults to stderr.
    */
   notify?: (message: string) => void;
 }
 
+const CAPTURE_HINT =
+  "Capture a fresh token from a logged-in Sleeper session (DevTools → Network → " +
+  "any graphql request → copy the 'authorization' header value) and set SLEEPER_TOKEN.";
+
 /**
  * SleeperSessionProvider — session handling for Sleeper's UNOFFICIAL private
- * write API.
+ * write API (protocol per cameron-eth/sleeper-sdk).
  *
  * ⚠️  Sleeper has no official write API. Trades/waivers/adds go through the
- * private app API, which needs a session token captured from a logged-in
+ * private GraphQL endpoint, which needs a session JWT captured from a logged-in
  * session. This is reverse-engineered and may break without notice.
  *
- * Per dec.sleeper-session-auth we NEVER log in with a password. We refresh where
- * safe; if we can't, we enter `needs-reauth`: writes pause, reads keep working
- * (they never call this), and the user is notified to supply a fresh token.
+ * Per dec.sleeper-session-auth we NEVER log in with a password. The token is a
+ * JWT, so we read its `exp` up front and flag `needs-reauth` before even trying
+ * a doomed write. Sleeper exposes no refresh endpoint, so recovery is a manual
+ * re-capture: on failure we pause writes, keep reads working, and notify.
  */
 export class SleeperSessionProvider implements SessionProvider {
-  private _state: AuthState = "ok";
   private token?: string;
-  private readonly refreshToken?: string;
+  private tokenInfo?: TokenInfo;
+  private invalidated = false;
   private readonly notify: (message: string) => void;
 
   constructor(opts: SleeperSessionOptions = {}) {
-    this.token = opts.token;
-    this.refreshToken = opts.refreshToken;
     this.notify = opts.notify ?? ((m) => console.error(`[auth] ${m}`));
-    if (!this.token) this._state = "needs-reauth";
+    this.token = opts.token;
+    if (!this.token) return; // state computes to needs-reauth
+    try {
+      this.tokenInfo = inspectToken(this.token);
+    } catch {
+      this.token = undefined;
+      this.notify(`Sleeper token is not a valid JWT. ${CAPTURE_HINT}`);
+      return;
+    }
+    if (isExpired(this.tokenInfo)) {
+      this.notify(`Sleeper token is expired. ${CAPTURE_HINT}`);
+    }
   }
 
   get state(): AuthState {
-    return this._state;
+    if (this.invalidated || !this.token || !this.tokenInfo) return "needs-reauth";
+    return isExpired(this.tokenInfo) ? "needs-reauth" : "ok";
   }
 
   async getToken(): Promise<string> {
-    if (this._state === "needs-reauth" || !this.token) {
-      throw new NeedsReauthError(
-        "Sleeper write session is unavailable. Supply a fresh session token " +
-          "(SLEEPER_SESSION_TOKEN) captured from a logged-in Sleeper session.",
-      );
+    if (this.state === "needs-reauth" || !this.token) {
+      throw new NeedsReauthError(`Sleeper write session unavailable. ${CAPTURE_HINT}`);
     }
     return this.token;
   }
 
   async markInvalid(): Promise<void> {
-    if (await this.tryRefresh()) return;
-    this._state = "needs-reauth";
-    this.token = undefined;
+    // No refresh endpoint exists for Sleeper's private API — a JWT is
+    // re-captured manually — so we fail safe rather than attempt a login.
+    this.invalidated = true;
     this.notify(
-      "Sleeper session expired and could not be refreshed. Writes are paused " +
-        "until a new session token is supplied. Reads are unaffected.",
+      `Sleeper session was rejected (unauthorized or expired). Writes are paused; ` +
+        `reads are unaffected. ${CAPTURE_HINT}`,
     );
   }
 
-  /**
-   * Attempt a token-refresh EXCHANGE (not a password login). Returns true on
-   * success. Sleeper's private refresh mechanics are not publicly documented,
-   * so this is a stub returning false today; when a refresh endpoint is
-   * confirmed, implement it here — everything else already handles both paths.
-   */
-  private async tryRefresh(): Promise<boolean> {
-    if (!this.refreshToken) return false;
-    // TODO(phase2): call Sleeper's private token-refresh endpoint with
-    // this.refreshToken, set this.token on success. Never send a password.
-    return false;
+  status(): SessionStatus {
+    const expiresAt = this.tokenInfo?.expiresAt;
+    return {
+      state: this.state,
+      user: this.tokenInfo?.displayName || this.tokenInfo?.userId || undefined,
+      expiresAt: expiresAt && expiresAt > 0 ? expiresAt : undefined,
+      secondsRemaining:
+        expiresAt && expiresAt > 0 ? Math.max(0, Math.floor(expiresAt - Date.now() / 1000)) : undefined,
+    };
   }
 }
