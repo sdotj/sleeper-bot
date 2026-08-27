@@ -198,25 +198,165 @@
       "id": "sleepbot.audit",
       "kind": "module",
       "name": "Audit",
-      "state": "ghost",
+      "state": "synced",
       "paths": [
         "./src/audit"
       ],
-      "files": [],
+      "files": [
+        "src/audit/audit.test.ts",
+        "src/audit/auditLog.ts",
+        "src/audit/index.ts",
+        "src/audit/store.ts"
+      ],
       "contracts": [],
-      "symbols": []
+      "symbols": [
+        {
+          "name": "AuditLog",
+          "kind": "class",
+          "signature": "export_statement:export class AuditLog { private static readonly COLLECTION = \"audit\"; constructor(private readonly store: Store) {} /** Append an event. Returns the stored record (with id + timestamp filled). */ async record( event: Omit<AuditEvent, \"id\" | \"at\"> & { at?: number }, ): Promise<AuditEvent> { const full: AuditEvent = { id: randomUUID(), at: event.at ?? Date.now(), ...event }; await this.store.put(AuditLog.COLLECTION, full.id, full); return full; } /** All events (optionally filtered by league), newest first. */ async list(leagueId?: string): Promise<AuditEvent[]> { const all = await this.store.list<AuditEvent>(AuditLog.COLLECTION); return all .filter((e) => !leagueId || e.leagueId === leagueId) .sort((a, b) => b.at - a.at); } }",
+          "file": "src/audit/auditLog.ts",
+          "line": 33,
+          "end_line": 54
+        },
+        {
+          "name": "InMemoryStore",
+          "kind": "class",
+          "signature": "export_statement:export class InMemoryStore implements Store { private data: Snapshot = {}; async put(collection: string, id: string, value: unknown): Promise<void> { (this.data[collection] ??= {})[id] = value; } async get<T = unknown>(collection: string, id: string): Promise<T | null> { return (this.data[collection]?.[id] as T) ?? null; } async list<T = unknown>(collection: string): Promise<T[]> { return Object.values(this.data[collection] ?? {}) as T[]; } async delete(collection: string, id: string): Promise<void> { if (this.data[collection]) delete this.data[collection][id]; } }",
+          "file": "src/audit/store.ts",
+          "line": 80,
+          "end_line": 95
+        },
+        {
+          "name": "JsonFileStore",
+          "kind": "class",
+          "signature": "export_statement:export class JsonFileStore implements Store { private data: Snapshot | null = null; private writeChain: Promise<void> = Promise.resolve(); constructor(private readonly path: string = \".data/store.json\") {} private async load(): Promise<Snapshot> { if (this.data) return this.data; try { this.data = JSON.parse(await readFile(this.path, \"utf8\")) as Snapshot; } catch { this.data = {}; } return this.data; } /** Serialize persistence so overlapping writes can't interleave. */ private persist(): Promise<void> { this.writeChain = this.writeChain.then(async () => { await mkdir(dirname(this.path), { recursive: true }); await writeFile(this.path, JSON.stringify(this.data ?? {}, null, 2)); }); return this.writeChain; } async put(collection: string, id: string, value: unknown): Promise<void> { const data = await this.load(); (data[collection] ??= {})[id] = value; await this.persist(); } async get<T = unknown>(collection: string, id: string): Promise<T | null> { const data = await this.load(); return (data[collection]?.[id] as T) ?? null; } async list<T = unknown>(collection: string): Promise<T[]> { const data = await this.load(); return Object.values(data[collection] ?? {}) as T[]; } async delete(collection: string, id: string): Promise<void> { const data = await this.load(); if (data[collection]) delete data[collection][id]; await this.persist(); } }",
+          "file": "src/audit/store.ts",
+          "line": 31,
+          "end_line": 77
+        },
+        {
+          "name": "AuditEvent",
+          "kind": "interface",
+          "signature": "export_statement:export interface AuditEvent { id: string; actionId: string; leagueId: string; type: AuditEventType; actor: AuditActor; /** Epoch milliseconds. */ at: number; /** Human-readable summary of what happened. */ summary: string; /** Optional structured detail (rule verdict, error, payload snapshot). */ detail?: unknown; }",
+          "file": "src/audit/auditLog.ts",
+          "line": 15,
+          "end_line": 27
+        },
+        {
+          "name": "Store",
+          "kind": "interface",
+          "signature": "export_statement:export interface Store { put(collection: string, id: string, value: unknown): Promise<void>; get<T = unknown>(collection: string, id: string): Promise<T | null>; list<T = unknown>(collection: string): Promise<T[]>; delete(collection: string, id: string): Promise<void>; }",
+          "file": "src/audit/store.ts",
+          "line": 14,
+          "end_line": 19
+        },
+        {
+          "name": "AuditActor",
+          "kind": "type",
+          "signature": "export_statement:export type AuditActor = \"user\" | \"rule\" | \"auto\";",
+          "file": "src/audit/auditLog.ts",
+          "line": 8,
+          "end_line": 8
+        },
+        {
+          "name": "AuditEventType",
+          "kind": "type",
+          "signature": "export_statement:export type AuditEventType = \"proposed\" | \"executed\" | \"rejected\" | \"failed\";",
+          "file": "src/audit/auditLog.ts",
+          "line": 5,
+          "end_line": 5
+        },
+        {
+          "name": "export {\n  AuditLog,\n  type AuditEvent,\n  type AuditEventType,\n  type AuditActor,\n} from \"./auditLog.js\";",
+          "kind": "other",
+          "signature": "export_statement:export { AuditLog, type AuditEvent, type AuditEventType, type AuditActor, } from \"./auditLog.js\";",
+          "file": "src/audit/index.ts",
+          "line": 2,
+          "end_line": 7
+        },
+        {
+          "name": "export { JsonFileStore, InMemoryStore, type Store } from \"./store.js\";",
+          "kind": "other",
+          "signature": "export_statement:export { JsonFileStore, InMemoryStore, type Store } from \"./store.js\";",
+          "file": "src/audit/index.ts",
+          "line": 1,
+          "end_line": 1
+        }
+      ]
     },
     {
       "id": "sleepbot.auth",
       "kind": "module",
       "name": "Auth",
-      "state": "ghost",
+      "state": "synced",
       "paths": [
         "./src/auth"
       ],
-      "files": [],
+      "files": [
+        "src/auth/SessionProvider.ts",
+        "src/auth/auth.test.ts",
+        "src/auth/index.ts",
+        "src/auth/sleeperSession.ts"
+      ],
       "contracts": [],
-      "symbols": []
+      "symbols": [
+        {
+          "name": "NeedsReauthError",
+          "kind": "class",
+          "signature": "export_statement:export class NeedsReauthError extends Error { constructor(message: string) { super(message); this.name = \"NeedsReauthError\"; } }",
+          "file": "src/auth/SessionProvider.ts",
+          "line": 9,
+          "end_line": 14
+        },
+        {
+          "name": "SleeperSessionProvider",
+          "kind": "class",
+          "signature": "export_statement:export class SleeperSessionProvider implements SessionProvider { private _state: AuthState = \"ok\"; private token?: string; private readonly refreshToken?: string; private readonly notify: (message: string) => void; constructor(opts: SleeperSessionOptions = {}) { this.token = opts.token; this.refreshToken = opts.refreshToken; this.notify = opts.notify ?? ((m) => console.error(`[auth] ${m}`)); if (!this.token) this._state = \"needs-reauth\"; } get state(): AuthState { return this._state; } async getToken(): Promise<string> { if (this._state === \"needs-reauth\" || !this.token) { throw new NeedsReauthError( \"Sleeper write session is unavailable. Supply a fresh session token \" + \"(SLEEPER_SESSION_TOKEN) captured from a logged-in Sleeper session.\", ); } return this.token; } async markInvalid(): Promise<void> { if (await this.tryRefresh()) return; this._state = \"needs-reauth\"; this.token = undefined; this.notify( \"Sleeper session expired and could not be refreshed. Writes are paused \" + \"until a new session token is supplied. Reads are unaffected.\", ); } /** * Attempt a token-refresh EXCHANGE (not a password login). Returns true on * success. Sleeper's private refresh mechanics are not publicly documented, * so this is a stub returning false today; when a refresh endpoint is * confirmed, implement it here — everything else already handles both paths. */ private async tryRefresh(): Promise<boolean> { if (!this.refreshToken) return false; // TODO(phase2): call Sleeper's private token-refresh endpoint with // this.refreshToken, set this.token on success. Never send a password. return false; } }",
+          "file": "src/auth/sleeperSession.ts",
+          "line": 31,
+          "end_line": 80
+        },
+        {
+          "name": "SessionProvider",
+          "kind": "interface",
+          "signature": "export_statement:export interface SessionProvider { readonly state: AuthState; /** Current token. Throws {@link NeedsReauthError} when unrecoverable. */ getToken(): Promise<string>; /** Called after a 401: attempt refresh, else enter `needs-reauth`. */ markInvalid(): Promise<void>; }",
+          "file": "src/auth/SessionProvider.ts",
+          "line": 23,
+          "end_line": 29
+        },
+        {
+          "name": "SleeperSessionOptions",
+          "kind": "interface",
+          "signature": "export_statement:export interface SleeperSessionOptions { /** Session token captured from a logged-in Sleeper session (env:SLEEPER_SESSION_TOKEN). */ token?: string; /** Refresh token, if Sleeper issues one (env:SLEEPER_REFRESH_TOKEN). */ refreshToken?: string; /** * Fail-safe notifier invoked when the session becomes unrecoverable. Wired to * the Phase-3 UI / push later; defaults to stderr. */ notify?: (message: string) => void; }",
+          "file": "src/auth/sleeperSession.ts",
+          "line": 7,
+          "end_line": 17
+        },
+        {
+          "name": "AuthState",
+          "kind": "type",
+          "signature": "export_statement:export type AuthState = \"ok\" | \"needs-reauth\";",
+          "file": "src/auth/SessionProvider.ts",
+          "line": 2,
+          "end_line": 2
+        },
+        {
+          "name": "export {\n  NeedsReauthError,\n  type AuthState,\n  type SessionProvider,\n} from \"./SessionProvider.js\";",
+          "kind": "other",
+          "signature": "export_statement:export { NeedsReauthError, type AuthState, type SessionProvider, } from \"./SessionProvider.js\";",
+          "file": "src/auth/index.ts",
+          "line": 1,
+          "end_line": 5
+        },
+        {
+          "name": "export {\n  SleeperSessionProvider,\n  type SleeperSessionOptions,\n} from \"./sleeperSession.js\";",
+          "kind": "other",
+          "signature": "export_statement:export { SleeperSessionProvider, type SleeperSessionOptions, } from \"./sleeperSession.js\";",
+          "file": "src/auth/index.ts",
+          "line": 6,
+          "end_line": 9
+        }
+      ]
     },
     {
       "id": "sleepbot.config",
@@ -478,13 +618,51 @@
       "id": "sleepbot.value",
       "kind": "module",
       "name": "Value",
-      "state": "ghost",
+      "state": "synced",
       "paths": [
         "./src/value"
       ],
-      "files": [],
+      "files": [
+        "src/value/ValueProvider.ts",
+        "src/value/genericValueProvider.ts",
+        "src/value/index.ts",
+        "src/value/value.test.ts"
+      ],
       "contracts": [],
-      "symbols": []
+      "symbols": [
+        {
+          "name": "GenericValueProvider",
+          "kind": "class",
+          "signature": "export_statement:export class GenericValueProvider implements ValueProvider { static readonly NEUTRAL = 50; constructor(private readonly rankings: Record<string, number> = {}) {} /** Load rankings from a JSON file of { playerId: value }. Missing file -> empty. */ static async fromFile(path: string): Promise<GenericValueProvider> { try { const parsed = JSON.parse(await readFile(path, \"utf8\")) as Record<string, number>; return new GenericValueProvider(parsed); } catch { return new GenericValueProvider({}); } } async getValue(playerId: string): Promise<number> { return this.rankings[playerId] ?? GenericValueProvider.NEUTRAL; } async getValues(playerIds: string[]): Promise<Map<string, number>> { return new Map(playerIds.map((id) => [id, this.rankings[id] ?? GenericValueProvider.NEUTRAL])); } }",
+          "file": "src/value/genericValueProvider.ts",
+          "line": 16,
+          "end_line": 38
+        },
+        {
+          "name": "ValueProvider",
+          "kind": "interface",
+          "signature": "export_statement:export interface ValueProvider { /** Value for one player. Unknown players return a neutral baseline. */ getValue(playerId: string): Promise<number>; /** Values for many players, as a playerId -> value map. */ getValues(playerIds: string[]): Promise<Map<string, number>>; }",
+          "file": "src/value/ValueProvider.ts",
+          "line": 11,
+          "end_line": 16
+        },
+        {
+          "name": "export type { ValueProvider } from \"./ValueProvider.js\";",
+          "kind": "other",
+          "signature": "export_statement:export type { ValueProvider } from \"./ValueProvider.js\";",
+          "file": "src/value/index.ts",
+          "line": 1,
+          "end_line": 1
+        },
+        {
+          "name": "export { GenericValueProvider } from \"./genericValueProvider.js\";",
+          "kind": "other",
+          "signature": "export_statement:export { GenericValueProvider } from \"./genericValueProvider.js\";",
+          "file": "src/value/index.ts",
+          "line": 2,
+          "end_line": 2
+        }
+      ]
     }
   ],
   "edges": [
@@ -569,30 +747,6 @@
       "path": "src/actions"
     },
     {
-      "code": "CAIRN_RECONCILE_LANGUAGE_UNKNOWN",
-      "severity": "warning",
-      "message": "Target `sleepbot.value` at `src/value` has unknown language; declare it in targets.",
-      "node": "sleepbot.value",
-      "target": "sleepbot.value:src/value",
-      "path": "src/value"
-    },
-    {
-      "code": "CAIRN_RECONCILE_LANGUAGE_UNKNOWN",
-      "severity": "warning",
-      "message": "Target `sleepbot.audit` at `src/audit` has unknown language; declare it in targets.",
-      "node": "sleepbot.audit",
-      "target": "sleepbot.audit:src/audit",
-      "path": "src/audit"
-    },
-    {
-      "code": "CAIRN_RECONCILE_LANGUAGE_UNKNOWN",
-      "severity": "warning",
-      "message": "Target `sleepbot.auth` at `src/auth` has unknown language; declare it in targets.",
-      "node": "sleepbot.auth",
-      "target": "sleepbot.auth:src/auth",
-      "path": "src/auth"
-    },
-    {
       "code": "CAIRN_CONTRACT_LEAF_UNCOVERED",
       "severity": "warning",
       "message": "leaf node `sleepbot.adapters.interface` declares no contract",
@@ -604,6 +758,20 @@
       "severity": "warning",
       "message": "leaf node `sleepbot.adapters.sleeper` declares no contract",
       "node": "sleepbot.adapters.sleeper",
+      "path": null
+    },
+    {
+      "code": "CAIRN_CONTRACT_LEAF_UNCOVERED",
+      "severity": "warning",
+      "message": "leaf node `sleepbot.audit` declares no contract",
+      "node": "sleepbot.audit",
+      "path": null
+    },
+    {
+      "code": "CAIRN_CONTRACT_LEAF_UNCOVERED",
+      "severity": "warning",
+      "message": "leaf node `sleepbot.auth` declares no contract",
+      "node": "sleepbot.auth",
       "path": null
     },
     {
@@ -632,6 +800,13 @@
       "severity": "warning",
       "message": "leaf node `sleepbot.tools` declares no contract",
       "node": "sleepbot.tools",
+      "path": null
+    },
+    {
+      "code": "CAIRN_CONTRACT_LEAF_UNCOVERED",
+      "severity": "warning",
+      "message": "leaf node `sleepbot.value` declares no contract",
+      "node": "sleepbot.value",
       "path": null
     },
     {
