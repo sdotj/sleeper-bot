@@ -756,13 +756,101 @@
       "id": "sleepbot.gui",
       "kind": "module",
       "name": "Gui",
-      "state": "ghost",
+      "state": "synced",
       "paths": [
         "./web"
       ],
-      "files": [],
+      "files": [
+        "web/src/App.tsx",
+        "web/src/api.ts",
+        "web/src/main.tsx",
+        "web/src/types.ts",
+        "web/src/views.tsx",
+        "web/vite.config.ts"
+      ],
       "contracts": [],
-      "symbols": []
+      "symbols": [
+        {
+          "name": "export const api = {\n  leagues: () => get<League[]>(\"/api/leagues\"),\n  myRoster: (id: string) => get<Roster | null>(`/api/leagues/${id}/my-roster`),\n  standings: (id: string) => get<StandingRow[]>(`/api/leagues/${id}/standings`),\n  matchups: (id: string, week?: number) =>\n    get<Matchup[]>(`/api/leagues/${id}/matchups${week ? `?week=${week}` : \"\"}`),\n  auth: (id: string) => get<AuthStatus>(`/api/leagues/${id}/auth`),\n  audit: (id: string) => get<AuditEvent[]>(`/api/audit?leagueId=${encodeURIComponent(id)}`),\n};",
+          "kind": "variable",
+          "signature": "export_statement:export const api = { leagues: () => get<League[]>(\"/api/leagues\"), myRoster: (id: string) => get<Roster | null>(`/api/leagues/${id}/my-roster`), standings: (id: string) => get<StandingRow[]>(`/api/leagues/${id}/standings`), matchups: (id: string, week?: number) => get<Matchup[]>(`/api/leagues/${id}/matchups${week ? `?week=${week}` : \"\"}`), auth: (id: string) => get<AuthStatus>(`/api/leagues/${id}/auth`), audit: (id: string) => get<AuditEvent[]>(`/api/audit?leagueId=${encodeURIComponent(id)}`), };",
+          "file": "web/src/api.ts",
+          "line": 13,
+          "end_line": 21
+        },
+        {
+          "name": "export default defineConfig({\n  plugins: [react()],\n  server: {\n    port: 5173,\n    proxy: { \"/api\": process.env.SLEEPBOT_API ?? \"http://127.0.0.1:8787\" },\n  },\n});",
+          "kind": "other",
+          "signature": "export_statement:export default defineConfig({ plugins: [react()], server: { port: 5173, proxy: { \"/api\": process.env.SLEEPBOT_API ?? \"http://127.0.0.1:8787\" }, }, });",
+          "file": "web/vite.config.ts",
+          "line": 6,
+          "end_line": 12
+        },
+        {
+          "name": "useAsync",
+          "kind": "function",
+          "signature": "export_statement:export function useAsync<T>(fn: () => Promise<T>, deps: unknown[]) { const [state, setState] = useState<{ data?: T; error?: string; loading: boolean }>({ loading: true, }); useEffect(() => { let live = true; setState({ loading: true }); fn() .then((data) => live && setState({ data, loading: false })) .catch((err) => live && setState({ error: (err as Error).message, loading: false })); return () => { live = false; }; // eslint-disable-next-line react-hooks/exhaustive-deps }, deps); return state; }",
+          "file": "web/src/api.ts",
+          "line": 24,
+          "end_line": 40
+        },
+        {
+          "name": "AuditEvent",
+          "kind": "interface",
+          "signature": "export_statement:export interface AuditEvent { id: string; actionId: string; leagueId: string; type: \"proposed\" | \"executed\" | \"rejected\" | \"failed\"; actor: \"user\" | \"rule\" | \"auto\"; at: number; summary: string; }",
+          "file": "web/src/types.ts",
+          "line": 60,
+          "end_line": 68
+        },
+        {
+          "name": "AuthStatus",
+          "kind": "interface",
+          "signature": "export_statement:export interface AuthStatus { state: \"ok\" | \"needs-reauth\"; user?: string; expiresAt?: number; secondsRemaining?: number; }",
+          "file": "web/src/types.ts",
+          "line": 53,
+          "end_line": 58
+        },
+        {
+          "name": "League",
+          "kind": "interface",
+          "signature": "export_statement:export interface League { id: string; platform: string; sleeperLeagueId?: string; }",
+          "file": "web/src/types.ts",
+          "line": 3,
+          "end_line": 7
+        },
+        {
+          "name": "Matchup",
+          "kind": "interface",
+          "signature": "export_statement:export interface Matchup { week: number; matchupId: number; rosterId: number; ownerName: string; isYou: boolean; points: number; starters: PlayerRef[]; }",
+          "file": "web/src/types.ts",
+          "line": 43,
+          "end_line": 51
+        },
+        {
+          "name": "PlayerRef",
+          "kind": "interface",
+          "signature": "export_statement:export interface PlayerRef { playerId: string; name: string; position: string; team: string | null; }",
+          "file": "web/src/types.ts",
+          "line": 9,
+          "end_line": 14
+        },
+        {
+          "name": "Roster",
+          "kind": "interface",
+          "signature": "export_statement:export interface Roster { rosterId: number; ownerName: string; isYou: boolean; starters: PlayerRef[]; bench: PlayerRef[]; reserve: PlayerRef[]; taxi: PlayerRef[]; wins: number; losses: number; ties: number; pointsFor: number; pointsAgainst: number; }",
+          "file": "web/src/types.ts",
+          "line": 16,
+          "end_line": 29
+        },
+        {
+          "name": "StandingRow",
+          "kind": "interface",
+          "signature": "export_statement:export interface StandingRow { rank: number; rosterId: number; ownerName: string; isYou: boolean; wins: number; losses: number; ties: number; pointsFor: number; pointsAgainst: number; }",
+          "file": "web/src/types.ts",
+          "line": 31,
+          "end_line": 41
+        }
+      ]
     },
     {
       "id": "sleepbot.rules",
@@ -1292,14 +1380,6 @@
       "path": "src/chat"
     },
     {
-      "code": "CAIRN_RECONCILE_LANGUAGE_UNKNOWN",
-      "severity": "warning",
-      "message": "Target `sleepbot.gui` at `web` has unknown language; declare it in targets.",
-      "node": "sleepbot.gui",
-      "target": "sleepbot.gui:web",
-      "path": "web"
-    },
-    {
       "code": "CAIRN_CONTRACT_LEAF_UNCOVERED",
       "severity": "warning",
       "message": "leaf node `sleepbot.actions` declares no contract",
@@ -1353,6 +1433,13 @@
       "severity": "warning",
       "message": "leaf node `sleepbot.core` declares no contract",
       "node": "sleepbot.core",
+      "path": null
+    },
+    {
+      "code": "CAIRN_CONTRACT_LEAF_UNCOVERED",
+      "severity": "warning",
+      "message": "leaf node `sleepbot.gui` declares no contract",
+      "node": "sleepbot.gui",
       "path": null
     },
     {

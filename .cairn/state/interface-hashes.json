@@ -7,6 +7,7 @@
   "sleepbot.auth:src/auth": "259a787d6d6f6aca",
   "sleepbot.config:src/config": "d5c74df1d21f6d96",
   "sleepbot.core:src/core": "2a52da39586d1470",
+  "sleepbot.gui:web": "29f449692e79525b",
   "sleepbot.rules:src/rules": "e1f27515c3a738ec",
   "sleepbot.server:src/index.ts": "bd60acb658c79e45",
   "sleepbot.tools:src/tools": "73d3489f866e2562",
