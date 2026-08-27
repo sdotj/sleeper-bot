@@ -1,0 +1,100 @@
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
+import { NeedsReauthError } from "../auth/index.js";
+import { SleepBotOperations, proposalOutcome } from "../core/index.js";
+import type {
+  AddDropPayload,
+  TradePayload,
+  WaiverClaimPayload,
+} from "../adapters/LeagueAdapter.js";
+
+/**
+ * The local HTTP API: a thin REST surface over {@link SleepBotOperations}. The
+ * React GUI (and, later, any other client) calls these routes; Claude reaches
+ * the same operations over MCP. No domain logic lives here — routes validate,
+ * call an operation, and let the shared error mapper translate failures
+ * (dec.gui-architecture).
+ */
+export function buildApiServer(ops: SleepBotOperations): FastifyInstance {
+  const app = Fastify({ logger: false });
+
+  /** Map a thrown error onto an HTTP status the GUI can branch on. */
+  const fail = (reply: FastifyReply, err: unknown) => {
+    const message = (err as Error).message;
+    if (err instanceof NeedsReauthError) return reply.status(401).send({ error: message });
+    if (/^unknown leagueId/.test(message)) return reply.status(404).send({ error: message });
+    return reply.status(400).send({ error: message });
+  };
+
+  /** Wrap a handler so its resolved value is returned and errors are mapped. */
+  const h =
+    (fn: (req: FastifyRequest) => Promise<unknown> | unknown) =>
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      try {
+        return await fn(req);
+      } catch (err) {
+        return fail(reply, err);
+      }
+    };
+
+  const id = (req: FastifyRequest) => (req.params as { id: string }).id;
+  const week = (req: FastifyRequest) => {
+    const w = (req.query as { week?: string }).week;
+    return w ? Number(w) : undefined;
+  };
+
+  app.get("/api/health", async () => ({ ok: true }));
+
+  // --- reads ---------------------------------------------------------------
+  app.get("/api/leagues", h(() => ops.listLeagues()));
+  app.get("/api/leagues/:id", h((req) => ops.getLeagueInfo(id(req))));
+  app.get("/api/leagues/:id/rosters", h((req) => ops.getRosters(id(req))));
+  app.get("/api/leagues/:id/my-roster", h((req) => ops.getMyRoster(id(req))));
+  app.get("/api/leagues/:id/standings", h((req) => ops.getStandings(id(req))));
+  app.get("/api/leagues/:id/matchups", h((req) => ops.getMatchups(id(req), week(req))));
+  app.get("/api/leagues/:id/transactions", h((req) => ops.getTransactions(id(req), week(req))));
+  app.get(
+    "/api/leagues/:id/players",
+    h((req) => {
+      const q = req.query as { query?: string; position?: string; team?: string; limit?: string };
+      return ops.searchPlayers(id(req), q.query ?? "", {
+        position: q.position,
+        team: q.team,
+        limit: q.limit ? Number(q.limit) : undefined,
+      });
+    }),
+  );
+  app.get(
+    "/api/leagues/:id/trending",
+    h((req) => {
+      const q = req.query as { type?: "add" | "drop"; limit?: string };
+      return ops.getTrendingPlayers(id(req), q.type ?? "add", q.limit ? Number(q.limit) : undefined);
+    }),
+  );
+  app.get("/api/leagues/:id/auth", h((req) => ops.getAuthStatus(id(req))));
+
+  app.get("/api/audit", h((req) => ops.getAuditLog((req.query as { leagueId?: string }).leagueId)));
+  app.get(
+    "/api/pending",
+    h((req) => ops.listPendingActions((req.query as { leagueId?: string }).leagueId)),
+  );
+
+  // --- writes (confirm-by-default) -----------------------------------------
+  app.post(
+    "/api/leagues/:id/propose/trade",
+    h(async (req) => proposalOutcome(await ops.proposeTrade(id(req), req.body as TradePayload))),
+  );
+  app.post(
+    "/api/leagues/:id/propose/add-drop",
+    h(async (req) => proposalOutcome(await ops.proposeAddDrop(id(req), req.body as AddDropPayload))),
+  );
+  app.post(
+    "/api/leagues/:id/propose/waiver",
+    h(async (req) => proposalOutcome(await ops.proposeWaiverClaim(id(req), req.body as WaiverClaimPayload))),
+  );
+  app.post(
+    "/api/actions/:id/execute",
+    h((req) => ops.executeAction(id(req))),
+  );
+
+  return app;
+}

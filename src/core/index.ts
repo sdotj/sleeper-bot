@@ -1,2 +1,2 @@
 export { buildAppContext, type AppContext } from "./context.js";
-export { SleepBotOperations } from "./operations.js";
+export { SleepBotOperations, proposalOutcome } from "./operations.js";

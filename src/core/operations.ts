@@ -4,7 +4,31 @@ import type {
   TradePayload,
   WaiverClaimPayload,
 } from "../adapters/LeagueAdapter.js";
+import type { ProposedAction } from "../actions/index.js";
 import type { AppContext } from "./context.js";
+
+/**
+ * Attach a plain-language `note` to a proposal so any front-end can state
+ * clearly whether it was blocked, or is a draft awaiting an explicit execute.
+ * Shared by the MCP tools and the HTTP api (dec.gui-architecture).
+ */
+export function proposalOutcome(action: ProposedAction) {
+  if (action.status === "rejected") {
+    return {
+      ...action,
+      note: `BLOCKED by a rule — nothing was stored or sent. ${action.verdict.blockedReasons.join("; ")}`,
+    };
+  }
+  const warn = action.verdict.warnings.length
+    ? ` Warnings: ${action.verdict.warnings.join("; ")}.`
+    : "";
+  return {
+    ...action,
+    note:
+      `Proposed as a DRAFT — nothing has been sent. To send it, call execute ` +
+      `with actionId "${action.id}".${warn}`,
+  };
+}
 
 /**
  * SleepBotOperations — the single catalog of things SleepBot can do, over an

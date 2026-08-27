@@ -1,5 +1,4 @@
-import { buildAppContext, type AppContext } from "../core/index.js";
-import type { ProposedAction } from "../actions/index.js";
+import { buildAppContext, proposalOutcome, type AppContext } from "../core/index.js";
 import type { ConfigRegistry } from "../config/loader.js";
 
 /**
@@ -14,27 +13,9 @@ export function buildToolContext(config: ConfigRegistry): Promise<ToolContext> {
   return buildAppContext(config);
 }
 
-/**
- * Attach a plain-language `note` to a proposal so the model states clearly
- * whether it was blocked, or is a draft awaiting an explicit execute_action.
- */
-export function proposalOutcome(action: ProposedAction) {
-  if (action.status === "rejected") {
-    return {
-      ...action,
-      note: `BLOCKED by a rule — nothing was stored or sent. ${action.verdict.blockedReasons.join("; ")}`,
-    };
-  }
-  const warn = action.verdict.warnings.length
-    ? ` Warnings: ${action.verdict.warnings.join("; ")}.`
-    : "";
-  return {
-    ...action,
-    note:
-      `Proposed as a DRAFT — nothing has been sent. To send it, call ` +
-      `execute_action with actionId "${action.id}".${warn}`,
-  };
-}
+// proposalOutcome lives in core so the HTTP api shares it; re-exported here so
+// the tool files can keep importing it from "./_shared.js".
+export { proposalOutcome };
 
 /** MCP tool result shape for a successful JSON payload. */
 export function jsonResult(data: unknown) {
