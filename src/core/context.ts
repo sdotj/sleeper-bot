@@ -3,7 +3,14 @@ import { SleeperAdapter } from "../adapters/sleeper/SleeperAdapter.js";
 import { SleeperClient } from "../adapters/sleeper/sleeperClient.js";
 import { SleeperSessionProvider } from "../auth/index.js";
 import { AuditLog, JsonFileStore } from "../audit/index.js";
-import { GenericValueProvider } from "../value/index.js";
+import {
+  GenericValueProvider,
+  KtcValueProvider,
+  loadKtcSnapshot,
+  type KtcMode,
+  type PlayerLite,
+  type ValueProvider,
+} from "../value/index.js";
 import { RulesEngine, loadRulesConfig } from "../rules/index.js";
 import { ActionPipeline, PendingStore } from "../actions/index.js";
 import type { ConfigRegistry } from "../config/loader.js";
@@ -33,15 +40,17 @@ export async function buildAppContext(config: ConfigRegistry): Promise<AppContex
   const audit = new AuditLog(store);
   const pending = new PendingStore(store);
   const rules = new RulesEngine(await loadRulesConfig());
-  const value = await GenericValueProvider.fromFile(
-    process.env.SLEEPBOT_RANKINGS ?? "config/rankings.json",
-  );
+
+  // One shared Sleeper client so the ~5MB players dump is cached across the
+  // adapters and the KTC value bridge.
+  const sleeperClient = new SleeperClient();
+  const value = await buildValueProvider(sleeperClient);
 
   const adapters = new Map<string, WriteableLeagueAdapter>();
   const adapterFor = (leagueId: string): WriteableLeagueAdapter => {
     let adapter = adapters.get(leagueId);
     if (!adapter) {
-      adapter = buildAdapter(config.get(leagueId));
+      adapter = buildAdapter(config.get(leagueId), sleeperClient);
       adapters.set(leagueId, adapter);
     }
     return adapter;
@@ -51,8 +60,36 @@ export async function buildAppContext(config: ConfigRegistry): Promise<AppContex
   return { config, adapterFor, pipeline, audit };
 }
 
+/**
+ * Build the value provider: prefer KeepTradeCut values (bridged to Sleeper ids)
+ * when a snapshot is present, else fall back to the generic file/neutral
+ * provider (dec.rules-engine-and-value). Mode (superflex vs 1-QB) is
+ * configurable via SLEEPBOT_KTC_MODE, defaulting to superflex.
+ */
+async function buildValueProvider(sleeperClient: SleeperClient): Promise<ValueProvider> {
+  const paths = [
+    process.env.SLEEPBOT_KTC ?? "config/ktc-values.json",
+    "config/ktc-values.example.json",
+  ];
+  for (const path of paths) {
+    const ktc = await loadKtcSnapshot(path).catch(() => null);
+    if (ktc && ktc.length) {
+      const loadPlayers = async (): Promise<PlayerLite[]> =>
+        Object.values(await sleeperClient.getPlayers()).map((p) => ({
+          playerId: p.player_id,
+          name: p.full_name ?? [p.first_name, p.last_name].filter(Boolean).join(" "),
+          position: p.position ?? "",
+        }));
+      return new KtcValueProvider(ktc, loadPlayers, {
+        mode: (process.env.SLEEPBOT_KTC_MODE as KtcMode) ?? "sf",
+      });
+    }
+  }
+  return GenericValueProvider.fromFile(process.env.SLEEPBOT_RANKINGS ?? "config/rankings.json");
+}
+
 /** Map a validated league entry to its write-capable adapter. New platforms slot in here. */
-function buildAdapter(entry: LeagueEntry): WriteableLeagueAdapter {
+function buildAdapter(entry: LeagueEntry, sleeperClient: SleeperClient): WriteableLeagueAdapter {
   switch (entry.platform) {
     case "sleeper": {
       // schema.superRefine guarantees `sleeper` is present for platform "sleeper".
@@ -62,7 +99,7 @@ function buildAdapter(entry: LeagueEntry): WriteableLeagueAdapter {
       const session = new SleeperSessionProvider({
         token: process.env.SLEEPER_TOKEN ?? process.env.SLEEPER_SESSION_TOKEN,
       });
-      return new SleeperAdapter(entry.sleeper!.leagueId, new SleeperClient(), entry.sleeper!.username, session);
+      return new SleeperAdapter(entry.sleeper!.leagueId, sleeperClient, entry.sleeper!.username, session);
     }
     case "espn":
       throw new Error(

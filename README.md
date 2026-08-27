@@ -110,6 +110,13 @@ Nothing changes your league silently: a `propose_*` tool returns a **draft**;
 }
 ```
 
+`trade_value_diff` uses **KeepTradeCut (KTC)** player values, bridged to Sleeper
+ids by name+position (~99% match). A snapshot ships in
+`config/ktc-values.example.json`; drop a fresher one at `config/ktc-values.json`
+to update, and set `SLEEPBOT_KTC_MODE=oqb` for 1-QB leagues (default superflex).
+Values from KeepTradeCut via
+[cameron-eth/sleeper-sdk](https://github.com/cameron-eth/sleeper-sdk).
+
 ### Enabling writes (unofficial Sleeper API)
 
 Sleeper has **no official write API**. Writes go through its private GraphQL

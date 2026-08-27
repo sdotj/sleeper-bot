@@ -766,10 +766,10 @@
         {
           "name": "buildAppContext",
           "kind": "function",
-          "signature": "export_statement:export async function buildAppContext(config: ConfigRegistry): Promise<AppContext> { const store = new JsonFileStore(); const audit = new AuditLog(store); const pending = new PendingStore(store); const rules = new RulesEngine(await loadRulesConfig()); const value = await GenericValueProvider.fromFile( process.env.SLEEPBOT_RANKINGS ?? \"config/rankings.json\", ); const adapters = new Map<string, WriteableLeagueAdapter>(); const adapterFor = (leagueId: string): WriteableLeagueAdapter => { let adapter = adapters.get(leagueId); if (!adapter) { adapter = buildAdapter(config.get(leagueId)); adapters.set(leagueId, adapter); } return adapter; }; const pipeline = new ActionPipeline({ rules, audit, pending, value, adapterFor }); return { config, adapterFor, pipeline, audit }; }",
+          "signature": "export_statement:export async function buildAppContext(config: ConfigRegistry): Promise<AppContext> { const store = new JsonFileStore(); const audit = new AuditLog(store); const pending = new PendingStore(store); const rules = new RulesEngine(await loadRulesConfig()); // One shared Sleeper client so the ~5MB players dump is cached across the // adapters and the KTC value bridge. const sleeperClient = new SleeperClient(); const value = await buildValueProvider(sleeperClient); const adapters = new Map<string, WriteableLeagueAdapter>(); const adapterFor = (leagueId: string): WriteableLeagueAdapter => { let adapter = adapters.get(leagueId); if (!adapter) { adapter = buildAdapter(config.get(leagueId), sleeperClient); adapters.set(leagueId, adapter); } return adapter; }; const pipeline = new ActionPipeline({ rules, audit, pending, value, adapterFor }); return { config, adapterFor, pipeline, audit }; }",
           "file": "src/core/context.ts",
-          "line": 31,
-          "end_line": 52
+          "line": 38,
+          "end_line": 61
         },
         {
           "name": "SleepBotOperations",
@@ -792,8 +792,8 @@
           "kind": "interface",
           "signature": "export_statement:export interface AppContext { config: ConfigRegistry; /** The write-capable adapter for a league (also serves reads), cached per league. */ adapterFor(leagueId: string): WriteableLeagueAdapter; pipeline: ActionPipeline; audit: AuditLog; }",
           "file": "src/core/context.ts",
-          "line": 18,
-          "end_line": 24
+          "line": 25,
+          "end_line": 31
         },
         {
           "name": "export { SleepBotOperations, proposalOutcome } from \"./operations.js\";",
@@ -1271,10 +1271,20 @@
         "src/value/ValueProvider.ts",
         "src/value/genericValueProvider.ts",
         "src/value/index.ts",
+        "src/value/ktc.test.ts",
+        "src/value/ktc.ts",
         "src/value/value.test.ts"
       ],
       "contracts": [],
       "symbols": [
+        {
+          "name": "loadKtcSnapshot",
+          "kind": "function",
+          "signature": "export_statement:export async function loadKtcSnapshot(path: string): Promise<KtcPlayer[]> { const parsed = JSON.parse(await readFile(path, \"utf8\")) as { players?: KtcPlayer[] } | KtcPlayer[]; return Array.isArray(parsed) ? parsed : (parsed.players ?? []); }",
+          "file": "src/value/ktc.ts",
+          "line": 102,
+          "end_line": 105
+        },
         {
           "name": "GenericValueProvider",
           "kind": "class",
@@ -1284,12 +1294,60 @@
           "end_line": 38
         },
         {
+          "name": "KtcValueProvider",
+          "kind": "class",
+          "signature": "export_statement:export class KtcValueProvider implements ValueProvider { private index: Map<string, number> | null = null; private building: Promise<Map<string, number>> | null = null; constructor( private readonly ktc: KtcPlayer[], private readonly loadPlayers: () => Promise<PlayerLite[]>, private readonly opts: { mode?: KtcMode; neutral?: number } = {}, ) {} async getValue(playerId: string): Promise<number> { const idx = await this.ensureIndex(); return idx.get(playerId) ?? this.neutral(); } async getValues(playerIds: string[]): Promise<Map<string, number>> { const idx = await this.ensureIndex(); return new Map(playerIds.map((id) => [id, idx.get(id) ?? this.neutral()])); } private neutral(): number { // Players outside KTC's ranked set are genuinely low-value; 0 by default. return this.opts.neutral ?? 0; } private async ensureIndex(): Promise<Map<string, number>> { if (this.index) return this.index; if (!this.building) this.building = this.build(); this.index = await this.building; return this.index; } private async build(): Promise<Map<string, number>> { const field = (this.opts.mode ?? \"sf\") === \"oqb\" ? \"oqb_value\" : \"sf_value\"; const ktcByKey = new Map<string, number>(); for (const k of this.ktc) { if (k.position === \"RDP\") continue; // rookie draft picks, no Sleeper player const v = k[field]; if (typeof v === \"number\") ktcByKey.set(nameKey(k.name, k.position), v); } const players = await this.loadPlayers(); const idx = new Map<string, number>(); for (const p of players) { const v = ktcByKey.get(nameKey(p.name, p.position)); if (v !== undefined) idx.set(p.playerId, v); } return idx; } }",
+          "file": "src/value/ktc.ts",
+          "line": 35,
+          "end_line": 84
+        },
+        {
+          "name": "nameKey",
+          "kind": "function",
+          "signature": "export_statement:export function nameKey(name: string, position: string): string { return `${normalizeName(name)}|${position.toUpperCase()}`; }",
+          "file": "src/value/ktc.ts",
+          "line": 87,
+          "end_line": 89
+        },
+        {
+          "name": "normalizeName",
+          "kind": "function",
+          "signature": "export_statement:export function normalizeName(name: string): string { return name .toLowerCase() .replace(/[.'’,]/g, \"\") .replace(/\\s+(jr|sr|ii|iii|iv)$/i, \"\") .replace(/\\s+/g, \" \") .trim(); }",
+          "file": "src/value/ktc.ts",
+          "line": 92,
+          "end_line": 99
+        },
+        {
+          "name": "KtcPlayer",
+          "kind": "interface",
+          "signature": "export_statement:export interface KtcPlayer { name: string; position: string; sf_value?: number; oqb_value?: number; }",
+          "file": "src/value/ktc.ts",
+          "line": 21,
+          "end_line": 26
+        },
+        {
+          "name": "PlayerLite",
+          "kind": "interface",
+          "signature": "export_statement:export interface PlayerLite { playerId: string; name: string; position: string; }",
+          "file": "src/value/ktc.ts",
+          "line": 29,
+          "end_line": 33
+        },
+        {
           "name": "ValueProvider",
           "kind": "interface",
           "signature": "export_statement:export interface ValueProvider { /** Value for one player. Unknown players return a neutral baseline. */ getValue(playerId: string): Promise<number>; /** Values for many players, as a playerId -> value map. */ getValues(playerIds: string[]): Promise<Map<string, number>>; }",
           "file": "src/value/ValueProvider.ts",
           "line": 11,
           "end_line": 16
+        },
+        {
+          "name": "KtcMode",
+          "kind": "type",
+          "signature": "export_statement:export type KtcMode = \"sf\" | \"oqb\";",
+          "file": "src/value/ktc.ts",
+          "line": 19,
+          "end_line": 19
         },
         {
           "name": "export type { ValueProvider } from \"./ValueProvider.js\";",
@@ -1306,6 +1364,14 @@
           "file": "src/value/index.ts",
           "line": 2,
           "end_line": 2
+        },
+        {
+          "name": "export {\n  KtcValueProvider,\n  loadKtcSnapshot,\n  normalizeName,\n  nameKey,\n  type KtcMode,\n  type KtcPlayer,\n  type PlayerLite,\n} from \"./ktc.js\";",
+          "kind": "other",
+          "signature": "export_statement:export { KtcValueProvider, loadKtcSnapshot, normalizeName, nameKey, type KtcMode, type KtcPlayer, type PlayerLite, } from \"./ktc.js\";",
+          "file": "src/value/index.ts",
+          "line": 3,
+          "end_line": 11
         }
       ]
     }
