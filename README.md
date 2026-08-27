@@ -134,11 +134,29 @@ need a **VPN** to reach the endpoint.
 
 Run the tests with `npm test`.
 
+## GUI (Phase 3)
+
+A local React (Vite) app over a thin HTTP API that reuses the same core
+operations as the MCP server. Screens: My Team, Standings, Matchups, the Audit
+log, and a Chat panel (server-side Claude with the same tools).
+
+```bash
+npm run build && npm run api          # HTTP API on :8787 (reuses the core)
+cd web && npm install && npm run dev  # GUI on :5173 (proxies /api -> :8787)
+```
+
+Then open http://localhost:5173. Secrets (`SLEEPER_TOKEN`, `ANTHROPIC_API_KEY`)
+live on the server only; the browser never sees them. The Chat panel needs
+`ANTHROPIC_API_KEY` — without it, chat returns a clear message and everything
+else keeps working. In the cloud: run the `api` service, serve the built `web/`
+statically, and point the `Store` at a hosted DB.
+
 ## Roadmap
 
 - **Phase 2 (built)** — write actions (confirm-by-default) wired to Sleeper's
   private GraphQL API, rules engine, audit log, JWT session handling with
   fail-safe re-auth. Add `SLEEPER_TOKEN` to enable real sends.
-- **Phase 3** — local GUI (Vite/React) over the same tools; surfaces the audit
-  log ("what SleepBot did while I was away")
+- **Phase 3 (built)** — local GUI (Vite/React) + HTTP API + in-app Claude chat,
+  all over the shared core. Surfaces the audit log ("what SleepBot did while I
+  was away").
 - **Phase 4** — `EspnAdapter` against ESPN's cookie-based API, same interface
