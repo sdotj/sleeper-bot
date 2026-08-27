@@ -1,0 +1,8 @@
+{
+  "sleepbot.adapters.interface:src/adapters/LeagueAdapter.ts": "7e34d601e6181602",
+  "sleepbot.adapters.sleeper:src/adapters/sleeper": "2982198db3cf0d42",
+  "sleepbot.config:src/config": "d5c74df1d21f6d96",
+  "sleepbot.rules:src/rules": "b01a8d8e538f4768",
+  "sleepbot.server:src/index.ts": "bd60acb658c79e45",
+  "sleepbot.tools:src/tools": "e0c9cd875cfd819d"
+}

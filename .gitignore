@@ -1,0 +1,13 @@
+node_modules/
+dist/
+*.log
+
+# Secrets and local config — only the .example.* files are committed
+.env
+config/leagues.json
+
+# Cached Sleeper player dump (large, refetched on demand)
+.cache/
+
+# OS / editor
+.DS_Store

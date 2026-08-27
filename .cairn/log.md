@@ -1,0 +1,3 @@
+- scan: nodes=9, findings=7, errors=1
+- scan: nodes=9, findings=6, errors=0
+- scan: nodes=9, findings=6, errors=0

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "cairn": {
+      "command": "/Users/samjenkins/.cargo/bin/cairn-mcp",
+      "args": ["--root", "."]
+    }
+  }
+}

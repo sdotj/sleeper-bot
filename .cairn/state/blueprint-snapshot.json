@@ -1,0 +1,82 @@
+{
+  "version": 2,
+  "nodes": {
+    "sleepbot": {
+      "kind": "System",
+      "parent": null,
+      "paths": [],
+      "edges": []
+    },
+    "sleepbot.adapters": {
+      "kind": "Container",
+      "parent": "sleepbot",
+      "paths": [],
+      "edges": []
+    },
+    "sleepbot.adapters.interface": {
+      "kind": "Module",
+      "parent": "sleepbot.adapters",
+      "paths": [
+        "./src/adapters/LeagueAdapter.ts"
+      ],
+      "edges": []
+    },
+    "sleepbot.adapters.sleeper": {
+      "kind": "Module",
+      "parent": "sleepbot.adapters",
+      "paths": [
+        "./src/adapters/sleeper"
+      ],
+      "edges": [
+        "sleepbot.adapters.interface",
+        "sleepbot.sleeper-api"
+      ]
+    },
+    "sleepbot.config": {
+      "kind": "Module",
+      "parent": "sleepbot",
+      "paths": [
+        "./src/config"
+      ],
+      "edges": []
+    },
+    "sleepbot.rules": {
+      "kind": "Module",
+      "parent": "sleepbot",
+      "paths": [
+        "./src/rules"
+      ],
+      "edges": [
+        "sleepbot.adapters.interface"
+      ]
+    },
+    "sleepbot.server": {
+      "kind": "Module",
+      "parent": "sleepbot",
+      "paths": [
+        "./src/index.ts"
+      ],
+      "edges": [
+        "sleepbot.config",
+        "sleepbot.tools"
+      ]
+    },
+    "sleepbot.sleeper-api": {
+      "kind": "Actor",
+      "parent": "sleepbot",
+      "paths": [],
+      "edges": []
+    },
+    "sleepbot.tools": {
+      "kind": "Module",
+      "parent": "sleepbot",
+      "paths": [
+        "./src/tools"
+      ],
+      "edges": [
+        "sleepbot.adapters.interface",
+        "sleepbot.config"
+      ]
+    }
+  }
+}

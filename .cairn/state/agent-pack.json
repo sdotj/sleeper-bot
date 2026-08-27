@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "cli_version": "0.10.0",
+  "bundle_version": "1.0.0",
+  "harness": "claude",
+  "files": [
+    {
+      "path": ".claude/skills/cairn-apply/SKILL.md",
+      "sha256": "8e6a41c562c095d13b9b476dc45db6449737e52b7197d75e6858febbfff54f21"
+    },
+    {
+      "path": ".claude/skills/cairn-archive/SKILL.md",
+      "sha256": "bcdff04bab3c3c9ac728ca1bf21717aa8a3cd06c2dfb6a9d8be7e5254f92c43d"
+    },
+    {
+      "path": ".claude/skills/cairn-dev/SKILL.md",
+      "sha256": "c5dc9daf7559c704281d0bb0f719dda73eac79025b80b7f9384a62400c91c58b"
+    },
+    {
+      "path": ".claude/skills/cairn-dev/references/artefact-schemas.md",
+      "sha256": "d573fd7c3e54909b01ca10aeb7aa6733d7f03dcfee69f400a9b5d77e71e5eca2"
+    },
+    {
+      "path": ".claude/skills/cairn-dev/references/blueprint-syntax.md",
+      "sha256": "9ecb828e6420ecece7417587f4d78126f7eb5cb83466da31bc1e039a73722ddd"
+    },
+    {
+      "path": ".claude/skills/cairn-dev/references/command-reference.md",
+      "sha256": "b7226423f7b2ebfccb81b6ff787e1763f3693f00c9d3d6d9a6f8fe59e8d9c0c2"
+    },
+    {
+      "path": ".claude/skills/cairn-dev/references/finding-codes.md",
+      "sha256": "558217c6a0d24ba3b4b684c61d64b3195c0247d655af000da0181a3839d0494a"
+    },
+    {
+      "path": ".claude/skills/cairn-dev/references/graph-navigation.md",
+      "sha256": "435f02b8c768d9957c4fdc53c9568dab50a31791fa37203605cd7923c6cb2302"
+    },
+    {
+      "path": ".claude/skills/cairn-dev/references/task-architecture-discovery.md",
+      "sha256": "d99d9bc0c77e9c9bfdbc7d07ccc10baf2b011e1576cbc5a38a5111e956bfeee6"
+    },
+    {
+      "path": ".claude/skills/cairn-dev/references/task-brownfield-decision-extraction.md",
+      "sha256": "e6dec30d8a192653efb4c53dcc3f4bcd0ae783078e910a19f1a5e04e14b24ccf"
+    },
+    {
+      "path": ".claude/skills/cairn-dev/references/task-bug-investigation.md",
+      "sha256": "35b0701f6fbe650626e8e51b6fbae0fd0e0a06be11bb43d50bcb6cadd7d1a62d"
+    },
+    {
+      "path": ".claude/skills/cairn-dev/references/task-feature-implementation.md",
+      "sha256": "deb8f01fd80fc7497a01cbab68ff5edbd1b00e63bc3cf8e5f0aa982e9f668aa9"
+    },
+    {
+      "path": ".claude/skills/cairn-dev/references/task-refactoring.md",
+      "sha256": "1fe82f9b1f87a9dcfa0b09ac72db2affab028ad194862b4cf56e9fd8b126afab"
+    },
+    {
+      "path": ".claude/skills/cairn-explore/SKILL.md",
+      "sha256": "51bb72a57d4fc19d8fd13befcf8b68d2af207b17dddd52f2ffe848020b488ae0"
+    },
+    {
+      "path": ".claude/skills/cairn-propose/SKILL.md",
+      "sha256": "fd3303d2d5743b8bc5053465d232ef4f7943fa37de926aa3860e3623c1e748bf"
+    }
+  ]
+}

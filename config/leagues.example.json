@@ -1,0 +1,12 @@
+{
+  "leagues": [
+    {
+      "id": "my-main-league",
+      "platform": "sleeper",
+      "sleeper": {
+        "leagueId": "123456789012345678",
+        "username": "yourusername"
+      }
+    }
+  ]
+}
