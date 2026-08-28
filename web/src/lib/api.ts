@@ -53,10 +53,12 @@ export function useAsync<T>(fn: () => Promise<T>, deps: unknown[]) {
   });
   useEffect(() => {
     let live = true;
-    setState({ loading: true });
+    // Keep any previous data visible while refetching (e.g. draft polling) so
+    // the UI doesn't flash to a spinner on every refresh.
+    setState((s) => ({ data: s.data, loading: true }));
     fn()
       .then((data) => live && setState({ data, loading: false }))
-      .catch((err) => live && setState({ error: (err as Error).message, loading: false }));
+      .catch((err) => live && setState((s) => ({ data: s.data, error: (err as Error).message, loading: false })));
     return () => {
       live = false;
     };

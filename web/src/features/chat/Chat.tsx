@@ -1,4 +1,6 @@
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
+import { cn } from "../../lib/cn";
+import { Button } from "../../components/ui";
 
 interface Msg {
   role: "user" | "assistant";
@@ -19,7 +21,7 @@ export function Chat({
 }: {
   draftContext?: DraftContext;
   placeholder?: string;
-  emptyHint?: React.ReactNode;
+  emptyHint?: ReactNode;
 }) {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
@@ -53,10 +55,10 @@ export function Chat({
   }
 
   return (
-    <div className="chat">
-      <div className="chat-log" ref={listRef}>
+    <div className="flex h-full flex-col">
+      <div ref={listRef} className="flex flex-1 flex-col gap-2.5 overflow-y-auto p-1">
         {msgs.length === 0 && (
-          <p className="muted">
+          <p className="px-1 py-2 text-sm leading-relaxed text-muted">
             {emptyHint ?? (
               <>
                 Ask SleepBot about your league — “how do my starters look this week?”, “who’s
@@ -67,17 +69,21 @@ export function Chat({
           </p>
         )}
         {msgs.map((m, i) => (
-          <div key={i} className={`bubble ${m.role}`}>
+          <Bubble key={i} role={m.role}>
             {m.content}
-          </div>
+          </Bubble>
         ))}
-        {busy && <div className="bubble assistant muted">thinking…</div>}
-        {error && <p className="error">⚠ {error}</p>}
+        {busy && (
+          <Bubble role="assistant" muted>
+            thinking…
+          </Bubble>
+        )}
+        {error && <p className="px-1 text-sm text-danger">⚠ {error}</p>}
       </div>
-      <div className="chat-input">
+      <div className="mt-3 flex items-end gap-2">
         <textarea
           value={input}
-          placeholder="Message SleepBot…"
+          placeholder={placeholder}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
@@ -85,11 +91,37 @@ export function Chat({
               void send();
             }
           }}
+          rows={1}
+          className="h-10 flex-1 resize-none rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-text placeholder:text-faint focus:border-accent/40 focus:outline-none focus:ring-2 focus:ring-accent/40"
         />
-        <button onClick={() => void send()} disabled={busy || !input.trim()}>
+        <Button variant="primary" onClick={() => void send()} disabled={busy || !input.trim()}>
           Send
-        </button>
+        </Button>
       </div>
+    </div>
+  );
+}
+
+function Bubble({
+  role,
+  muted,
+  children,
+}: {
+  role: "user" | "assistant";
+  muted?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className={cn(
+        "max-w-[85%] whitespace-pre-wrap rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed",
+        role === "user"
+          ? "self-end rounded-br-md bg-accent text-[#04122a]"
+          : "self-start rounded-bl-md border border-border bg-surface-2",
+        muted && "text-muted",
+      )}
+    >
+      {children}
     </div>
   );
 }

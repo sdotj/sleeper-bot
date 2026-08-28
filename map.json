@@ -921,12 +921,27 @@
       ],
       "files": [
         "web/src/App.tsx",
-        "web/src/api.ts",
-        "web/src/chat.tsx",
-        "web/src/draftView.tsx",
+        "web/src/components/layout/Header.tsx",
+        "web/src/components/ui/Badge.tsx",
+        "web/src/components/ui/Card.tsx",
+        "web/src/components/ui/DataTable.tsx",
+        "web/src/components/ui/PlayerRow.tsx",
+        "web/src/components/ui/Tabs.tsx",
+        "web/src/components/ui/controls.tsx",
+        "web/src/components/ui/feedback.tsx",
+        "web/src/components/ui/index.ts",
+        "web/src/features/audit/Audit.tsx",
+        "web/src/features/chat/Chat.tsx",
+        "web/src/features/draft/DraftBoard.tsx",
+        "web/src/features/draft/DraftView.tsx",
+        "web/src/features/draft/Recommendations.tsx",
+        "web/src/features/matchups/Matchups.tsx",
+        "web/src/features/myTeam/MyTeam.tsx",
+        "web/src/features/standings/Standings.tsx",
+        "web/src/lib/api.ts",
+        "web/src/lib/cn.ts",
+        "web/src/lib/types.ts",
         "web/src/main.tsx",
-        "web/src/types.ts",
-        "web/src/views.tsx",
         "web/vite.config.ts"
       ],
       "contracts": [],
@@ -935,39 +950,111 @@
           "name": "export const api = {\n  leagues: () => get<League[]>(\"/api/leagues\"),\n  myRoster: (id: string) => get<Roster | null>(`/api/leagues/${id}/my-roster`),\n  standings: (id: string) => get<StandingRow[]>(`/api/leagues/${id}/standings`),\n  matchups: (id: string, week?: number) =>\n    get<Matchup[]>(`/api/leagues/${id}/matchups${week ? `?week=${week}` : \"\"}`),\n  auth: (id: string) => get<AuthStatus>(`/api/leagues/${id}/auth`),\n  audit: (id: string) => get<AuditEvent[]>(`/api/audit?leagueId=${encodeURIComponent(id)}`),\n  drafts: (id: string) => get<Draft[]>(`/api/leagues/${id}/drafts`),\n  draftBoard: (id: string, draftId: string, yourRosterId?: number) =>\n    get<DraftBoard>(\n      `/api/leagues/${id}/drafts/${draftId}/board${yourRosterId != null ? `?yourRosterId=${yourRosterId}` : \"\"}`,\n    ),\n  draftRecs: (\n    id: string,\n    draftId: string,\n    o: { rosterId?: number; position?: string; limit?: number } = {},\n  ) => {\n    const q = new URLSearchParams();\n    if (o.rosterId != null) q.set(\"rosterId\", String(o.rosterId));\n    if (o.position) q.set(\"position\", o.position);\n    if (o.limit != null) q.set(\"limit\", String(o.limit));\n    return get<DraftRecommendation[]>(`/api/leagues/${id}/drafts/${draftId}/recommendations?${q}`);\n  },\n};",
           "kind": "variable",
           "signature": "export_statement:export const api = { leagues: () => get<League[]>(\"/api/leagues\"), myRoster: (id: string) => get<Roster | null>(`/api/leagues/${id}/my-roster`), standings: (id: string) => get<StandingRow[]>(`/api/leagues/${id}/standings`), matchups: (id: string, week?: number) => get<Matchup[]>(`/api/leagues/${id}/matchups${week ? `?week=${week}` : \"\"}`), auth: (id: string) => get<AuthStatus>(`/api/leagues/${id}/auth`), audit: (id: string) => get<AuditEvent[]>(`/api/audit?leagueId=${encodeURIComponent(id)}`), drafts: (id: string) => get<Draft[]>(`/api/leagues/${id}/drafts`), draftBoard: (id: string, draftId: string, yourRosterId?: number) => get<DraftBoard>( `/api/leagues/${id}/drafts/${draftId}/board${yourRosterId != null ? `?yourRosterId=${yourRosterId}` : \"\"}`, ), draftRecs: ( id: string, draftId: string, o: { rosterId?: number; position?: string; limit?: number } = {}, ) => { const q = new URLSearchParams(); if (o.rosterId != null) q.set(\"rosterId\", String(o.rosterId)); if (o.position) q.set(\"position\", o.position); if (o.limit != null) q.set(\"limit\", String(o.limit)); return get<DraftRecommendation[]>(`/api/leagues/${id}/drafts/${draftId}/recommendations?${q}`); }, };",
-          "file": "web/src/api.ts",
+          "file": "web/src/lib/api.ts",
           "line": 23,
           "end_line": 47
         },
         {
-          "name": "export default defineConfig({\n  plugins: [react()],\n  server: {\n    port: 5173,\n    proxy: { \"/api\": process.env.SLEEPBOT_API ?? \"http://127.0.0.1:8787\" },\n  },\n});",
+          "name": "export default defineConfig({\n  plugins: [react(), tailwindcss()],\n  server: {\n    port: 5173,\n    proxy: { \"/api\": process.env.SLEEPBOT_API ?? \"http://127.0.0.1:8787\" },\n  },\n});",
           "kind": "other",
-          "signature": "export_statement:export default defineConfig({ plugins: [react()], server: { port: 5173, proxy: { \"/api\": process.env.SLEEPBOT_API ?? \"http://127.0.0.1:8787\" }, }, });",
+          "signature": "export_statement:export default defineConfig({ plugins: [react(), tailwindcss()], server: { port: 5173, proxy: { \"/api\": process.env.SLEEPBOT_API ?? \"http://127.0.0.1:8787\" }, }, });",
           "file": "web/vite.config.ts",
-          "line": 6,
-          "end_line": 12
+          "line": 7,
+          "end_line": 13
         },
         {
-          "name": "DraftView",
+          "name": "Async",
           "kind": "function",
-          "signature": "export_statement:export function DraftView({ leagueId }: { leagueId: string }) { const drafts = useAsync(() => api.drafts(leagueId), [leagueId]); const [draftId, setDraftId] = useState<string | null>(null); const [manualDraftId, setManualDraftId] = useState<string>(\"\"); const [rosterId, setRosterId] = useState<string>(\"\"); const [position, setPosition] = useState<string>(\"\"); const [chatOpen, setChatOpen] = useState(false); const [tick, setTick] = useState(0); // A pasted mock-draft id wins; else the dropdown selection; else the first // league draft. The board/recs endpoints accept any draft id. const activeDraft = manualDraftId.trim() || draftId || drafts.data?.[0]?.draftId || null; const yourRosterId = rosterId ? Number(rosterId) : undefined; const board = useAsync( () => (activeDraft ? api.draftBoard(leagueId, activeDraft, yourRosterId) : Promise.resolve(null)), [leagueId, activeDraft, yourRosterId, tick], ); const recs = useAsync( () => activeDraft ? api.draftRecs(leagueId, activeDraft, { rosterId: yourRosterId, position: position || undefined, limit: 12 }) : Promise.resolve([]), [leagueId, activeDraft, position, yourRosterId, tick], ); // Poll the live board on an interval for any draft that isn't finished, so // both the display and the (server-side) chat context stay current. const status = board.data?.draft.status; const polling = !!activeDraft && status !== \"complete\"; useEffect(() => { if (!polling) return; const t = setInterval(() => setTick((n) => n + 1), 5_000); return () => clearInterval(t); }, [polling]); if (drafts.loading) return <p className=\"muted\">Loading…</p>; if (drafts.error) return <p className=\"error\">⚠ {drafts.error}",
-          "file": "web/src/draftView.tsx",
-          "line": 7,
-          "end_line": 44
+          "signature": "export_statement:export function Async<T>({ state, children, }: { state: AsyncState<T>; children: (data: T) => ReactNode; }) { // Data-first: keep showing content while a refresh is in flight, and don't // blank the view on a transient poll error once we have data. if (state.data !== undefined) return <>{children(state.data)}</>; if (state.loading) { return ( <div className=\"flex items-center justify-center gap-2 py-12 text-sm text-muted\"> <Spinner /> Loading… </div> ); } if (state.error) { return <p className=\"px-5 py-8 text-sm text-danger\">⚠ {state.error}</p>; }",
+          "file": "web/src/components/ui/feedback.tsx",
+          "line": 26,
+          "end_line": 45
+        },
+        {
+          "name": "Badge",
+          "kind": "function",
+          "signature": "export_statement:export function Badge({ variant = \"neutral\", children, className, }: { variant?: Variant; children: ReactNode; className?: string; }) { return ( <span className={cn( \"inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[0.68rem] font-semibold whitespace-nowrap\", VARIANTS[variant], className, )} > {children} </span> ); }",
+          "file": "web/src/components/ui/Badge.tsx",
+          "line": 14,
+          "end_line": 34
+        },
+        {
+          "name": "Card",
+          "kind": "function",
+          "signature": "export_statement:export function Card({ className, children }: { className?: string; children: ReactNode }) { return ( <div className={cn( \"rounded-xl border border-border bg-surface/90 shadow-lg shadow-black/25 backdrop-blur-sm\", className, )} > {children} </div> ); }",
+          "file": "web/src/components/ui/Card.tsx",
+          "line": 4,
+          "end_line": 15
+        },
+        {
+          "name": "CardHeader",
+          "kind": "function",
+          "signature": "export_statement:export function CardHeader({ title, right, className, }: { title: ReactNode; right?: ReactNode; className?: string; }) { return ( <div className={cn( \"flex items-center justify-between gap-3 border-b border-border/70 px-5 py-3.5\", className, )} > <h3 className=\"text-[0.95rem] font-semibold tracking-tight\">{title}</h3> {right != null && <div className=\"text-sm text-muted\">{right}</div>} </div> ); }",
+          "file": "web/src/components/ui/Card.tsx",
+          "line": 17,
+          "end_line": 37
+        },
+        {
+          "name": "EmptyState",
+          "kind": "function",
+          "signature": "export_statement:export function EmptyState({ children }: { children: ReactNode }) { return <div className=\"px-5 py-12 text-center text-sm text-muted\">{children}</div>; }",
+          "file": "web/src/components/ui/feedback.tsx",
+          "line": 15,
+          "end_line": 17
+        },
+        {
+          "name": "PositionBadge",
+          "kind": "function",
+          "signature": "export_statement:export function PositionBadge({ pos, className }: { pos: string; className?: string }) { const key = (pos || \"\").toUpperCase(); return ( <span className={cn( \"inline-flex w-10 justify-center rounded-md px-1.5 py-1 text-[0.62rem] font-bold tracking-wide\", POS[key] ?? \"bg-surface-2 text-faint\", className, )} > {key || \"—\"} </span> ); }",
+          "file": "web/src/components/ui/Badge.tsx",
+          "line": 46,
+          "end_line": 59
+        },
+        {
+          "name": "Spinner",
+          "kind": "function",
+          "signature": "export_statement:export function Spinner({ className }: { className?: string }) { return ( <span className={cn( \"inline-block h-4 w-4 animate-spin rounded-full border-2 border-border-strong border-t-accent\", className, )} /> ); }",
+          "file": "web/src/components/ui/feedback.tsx",
+          "line": 4,
+          "end_line": 13
+        },
+        {
+          "name": "TabBar",
+          "kind": "function",
+          "signature": "export_statement:export function TabBar<T extends string>({ tabs, active, onSelect, }: { tabs: readonly T[]; active: T; onSelect: (tab: T) => void; }) { return ( <nav className=\"flex flex-wrap gap-1 rounded-xl border border-border bg-surface/60 p-1\"> {tabs.map((t) => ( <button key={t} onClick={() => onSelect(t)} className={cn( \"h-8 rounded-lg px-3.5 text-sm font-medium transition-colors\", t === active ? \"bg-accent text-[#04122a] font-semibold shadow-sm shadow-accent/30\" : \"text-muted hover:bg-surface-2 hover:text-text\", )} > {t} </button> ))} </nav> ); }",
+          "file": "web/src/components/ui/Tabs.tsx",
+          "line": 3,
+          "end_line": 30
+        },
+        {
+          "name": "cn",
+          "kind": "function",
+          "signature": "export_statement:export function cn(...parts: Array<string | false | null | undefined>): string { return parts.filter(Boolean).join(\" \"); }",
+          "file": "web/src/lib/cn.ts",
+          "line": 2,
+          "end_line": 4
         },
         {
           "name": "useAsync",
           "kind": "function",
-          "signature": "export_statement:export function useAsync<T>(fn: () => Promise<T>, deps: unknown[]) { const [state, setState] = useState<{ data?: T; error?: string; loading: boolean }>({ loading: true, }); useEffect(() => { let live = true; setState({ loading: true }); fn() .then((data) => live && setState({ data, loading: false })) .catch((err) => live && setState({ error: (err as Error).message, loading: false })); return () => { live = false; }; // eslint-disable-next-line react-hooks/exhaustive-deps }, deps); return state; }",
-          "file": "web/src/api.ts",
+          "signature": "export_statement:export function useAsync<T>(fn: () => Promise<T>, deps: unknown[]) { const [state, setState] = useState<{ data?: T; error?: string; loading: boolean }>({ loading: true, }); useEffect(() => { let live = true; // Keep any previous data visible while refetching (e.g. draft polling) so // the UI doesn't flash to a spinner on every refresh. setState((s) => ({ data: s.data, loading: true })); fn() .then((data) => live && setState({ data, loading: false })) .catch((err) => live && setState((s) => ({ data: s.data, error: (err as Error).message, loading: false }))); return () => { live = false; }; // eslint-disable-next-line react-hooks/exhaustive-deps }, deps); return state; }",
+          "file": "web/src/lib/api.ts",
           "line": 50,
-          "end_line": 66
+          "end_line": 68
+        },
+        {
+          "name": "AsyncState",
+          "kind": "interface",
+          "signature": "export_statement:export interface AsyncState<T> { data?: T; error?: string; loading: boolean; }",
+          "file": "web/src/components/ui/feedback.tsx",
+          "line": 19,
+          "end_line": 23
         },
         {
           "name": "AuditEvent",
           "kind": "interface",
           "signature": "export_statement:export interface AuditEvent { id: string; actionId: string; leagueId: string; type: \"proposed\" | \"executed\" | \"rejected\" | \"failed\"; actor: \"user\" | \"rule\" | \"auto\"; at: number; summary: string; }",
-          "file": "web/src/types.ts",
+          "file": "web/src/lib/types.ts",
           "line": 60,
           "end_line": 68
         },
@@ -975,15 +1062,23 @@
           "name": "AuthStatus",
           "kind": "interface",
           "signature": "export_statement:export interface AuthStatus { state: \"ok\" | \"needs-reauth\"; user?: string; expiresAt?: number; secondsRemaining?: number; }",
-          "file": "web/src/types.ts",
+          "file": "web/src/lib/types.ts",
           "line": 53,
           "end_line": 58
+        },
+        {
+          "name": "Column",
+          "kind": "interface",
+          "signature": "export_statement:export interface Column<T> { key: string; header: ReactNode; render: (row: T) => ReactNode; className?: string; }",
+          "file": "web/src/components/ui/DataTable.tsx",
+          "line": 4,
+          "end_line": 9
         },
         {
           "name": "Draft",
           "kind": "interface",
           "signature": "export_statement:export interface Draft { draftId: string; status: string; type: string; season: string; rounds: number; teams: number; slotToRosterId: Record<string, number>; starterSlots: Record<string, number>; }",
-          "file": "web/src/types.ts",
+          "file": "web/src/lib/types.ts",
           "line": 70,
           "end_line": 79
         },
@@ -991,7 +1086,7 @@
           "name": "DraftBoard",
           "kind": "interface",
           "signature": "export_statement:export interface DraftBoard { draft: Draft; pickCount: number; onTheClock: { pickNo: number; round: number; slot: number; rosterId: number | null } | null; recentPicks: DraftPick[]; yourNextPickNo: number | null; }",
-          "file": "web/src/types.ts",
+          "file": "web/src/lib/types.ts",
           "line": 91,
           "end_line": 97
         },
@@ -999,15 +1094,15 @@
           "name": "DraftContext",
           "kind": "interface",
           "signature": "export_statement:export interface DraftContext { leagueId: string; draftId: string; rosterId?: number; }",
-          "file": "web/src/chat.tsx",
-          "line": 9,
-          "end_line": 13
+          "file": "web/src/features/chat/Chat.tsx",
+          "line": 11,
+          "end_line": 15
         },
         {
           "name": "DraftPick",
           "kind": "interface",
           "signature": "export_statement:export interface DraftPick { round: number; pickNo: number; slot: number; rosterId: number | null; playerName: string; position: string; team: string | null; }",
-          "file": "web/src/types.ts",
+          "file": "web/src/lib/types.ts",
           "line": 81,
           "end_line": 89
         },
@@ -1015,7 +1110,7 @@
           "name": "DraftRecommendation",
           "kind": "interface",
           "signature": "export_statement:export interface DraftRecommendation { playerId: string; name: string; position: string; team: string | null; value: number; reason: string; }",
-          "file": "web/src/types.ts",
+          "file": "web/src/lib/types.ts",
           "line": 99,
           "end_line": 106
         },
@@ -1023,7 +1118,7 @@
           "name": "League",
           "kind": "interface",
           "signature": "export_statement:export interface League { id: string; platform: string; sleeperLeagueId?: string; }",
-          "file": "web/src/types.ts",
+          "file": "web/src/lib/types.ts",
           "line": 3,
           "end_line": 7
         },
@@ -1031,7 +1126,7 @@
           "name": "Matchup",
           "kind": "interface",
           "signature": "export_statement:export interface Matchup { week: number; matchupId: number; rosterId: number; ownerName: string; isYou: boolean; points: number; starters: PlayerRef[]; }",
-          "file": "web/src/types.ts",
+          "file": "web/src/lib/types.ts",
           "line": 43,
           "end_line": 51
         },
@@ -1039,7 +1134,7 @@
           "name": "PlayerRef",
           "kind": "interface",
           "signature": "export_statement:export interface PlayerRef { playerId: string; name: string; position: string; team: string | null; }",
-          "file": "web/src/types.ts",
+          "file": "web/src/lib/types.ts",
           "line": 9,
           "end_line": 14
         },
@@ -1047,7 +1142,7 @@
           "name": "Roster",
           "kind": "interface",
           "signature": "export_statement:export interface Roster { rosterId: number; ownerName: string; isYou: boolean; starters: PlayerRef[]; bench: PlayerRef[]; reserve: PlayerRef[]; taxi: PlayerRef[]; wins: number; losses: number; ties: number; pointsFor: number; pointsAgainst: number; }",
-          "file": "web/src/types.ts",
+          "file": "web/src/lib/types.ts",
           "line": 16,
           "end_line": 29
         },
@@ -1055,9 +1150,65 @@
           "name": "StandingRow",
           "kind": "interface",
           "signature": "export_statement:export interface StandingRow { rank: number; rosterId: number; ownerName: string; isYou: boolean; wins: number; losses: number; ties: number; pointsFor: number; pointsAgainst: number; }",
-          "file": "web/src/types.ts",
+          "file": "web/src/lib/types.ts",
           "line": 31,
           "end_line": 41
+        },
+        {
+          "name": "export { Async, EmptyState, Spinner, type AsyncState } from \"./feedback\";",
+          "kind": "other",
+          "signature": "export_statement:export { Async, EmptyState, Spinner, type AsyncState } from \"./feedback\";",
+          "file": "web/src/components/ui/index.ts",
+          "line": 3,
+          "end_line": 3
+        },
+        {
+          "name": "export { Badge, PositionBadge } from \"./Badge\";",
+          "kind": "other",
+          "signature": "export_statement:export { Badge, PositionBadge } from \"./Badge\";",
+          "file": "web/src/components/ui/index.ts",
+          "line": 2,
+          "end_line": 2
+        },
+        {
+          "name": "export { Button, Select, TextInput, SectionLabel } from \"./controls\";",
+          "kind": "other",
+          "signature": "export_statement:export { Button, Select, TextInput, SectionLabel } from \"./controls\";",
+          "file": "web/src/components/ui/index.ts",
+          "line": 4,
+          "end_line": 4
+        },
+        {
+          "name": "export { Card, CardHeader } from \"./Card\";",
+          "kind": "other",
+          "signature": "export_statement:export { Card, CardHeader } from \"./Card\";",
+          "file": "web/src/components/ui/index.ts",
+          "line": 1,
+          "end_line": 1
+        },
+        {
+          "name": "export { DataTable, type Column } from \"./DataTable\";",
+          "kind": "other",
+          "signature": "export_statement:export { DataTable, type Column } from \"./DataTable\";",
+          "file": "web/src/components/ui/index.ts",
+          "line": 6,
+          "end_line": 6
+        },
+        {
+          "name": "export { PlayerRow } from \"./PlayerRow\";",
+          "kind": "other",
+          "signature": "export_statement:export { PlayerRow } from \"./PlayerRow\";",
+          "file": "web/src/components/ui/index.ts",
+          "line": 5,
+          "end_line": 5
+        },
+        {
+          "name": "export { TabBar } from \"./Tabs\";",
+          "kind": "other",
+          "signature": "export_statement:export { TabBar } from \"./Tabs\";",
+          "file": "web/src/components/ui/index.ts",
+          "line": 7,
+          "end_line": 7
         }
       ]
     },

@@ -1,74 +1,47 @@
 import { useState } from "react";
-import { api, useAsync } from "./api";
-import { Audit, Matchups, MyTeam, Standings } from "./views";
-import { Chat } from "./chat";
-import { DraftView } from "./draftView";
+import { api, useAsync } from "./lib/api";
+import { Header } from "./components/layout/Header";
+import { TabBar } from "./components/ui";
+import { MyTeam } from "./features/myTeam/MyTeam";
+import { Standings } from "./features/standings/Standings";
+import { Matchups } from "./features/matchups/Matchups";
+import { DraftView } from "./features/draft/DraftView";
+import { Audit } from "./features/audit/Audit";
+import { Chat } from "./features/chat/Chat";
 
 const TABS = ["My Team", "Standings", "Matchups", "Draft", "Audit", "Chat"] as const;
 type Tab = (typeof TABS)[number];
-
-function AuthBadge({ leagueId }: { leagueId: string }) {
-  const state = useAsync(() => api.auth(leagueId), [leagueId]);
-  if (state.loading || !state.data) return null;
-  const ok = state.data.state === "ok";
-  return (
-    <span className={`badge ${ok ? "ok" : "warn"}`} title={state.data.user ?? ""}>
-      {ok ? `writes: ready${state.data.user ? ` (${state.data.user})` : ""}` : "writes: needs-reauth"}
-    </span>
-  );
-}
 
 export function App() {
   const leagues = useAsync(() => api.leagues(), []);
   const [leagueId, setLeagueId] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("My Team");
-
-  // Default to the first league once loaded.
-  const activeLeague = leagueId ?? leagues.data?.[0]?.id ?? null;
+  const active = leagueId ?? leagues.data?.[0]?.id ?? null;
 
   return (
-    <div className="app">
-      <header>
-        <div className="brand">
-          <span className="logo">🏈</span>
-          <h1>SleepBot</h1>
-        </div>
-        <div className="header-right">
-          {leagues.data && leagues.data.length > 0 && activeLeague && (
-            <>
-              <select value={activeLeague} onChange={(e) => setLeagueId(e.target.value)}>
-                {leagues.data.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.id}
-                  </option>
-                ))}
-              </select>
-              <AuthBadge leagueId={activeLeague} />
-            </>
-          )}
-        </div>
-      </header>
+    <div className="mx-auto max-w-4xl px-4 py-6">
+      <Header leagues={leagues.data ?? []} active={active} onSelect={setLeagueId} />
 
-      {leagues.error && <p className="error">⚠ {leagues.error} — is the API running (npm run api)?</p>}
+      {leagues.error && (
+        <p className="text-sm text-danger">⚠ {leagues.error} — is the API running (npm run api)?</p>
+      )}
 
-      {activeLeague && (
-        <>
-          <nav className="tabs">
-            {TABS.map((t) => (
-              <button key={t} className={t === tab ? "active" : ""} onClick={() => setTab(t)}>
-                {t}
-              </button>
-            ))}
-          </nav>
+      {active && (
+        <div className="space-y-5">
+          <TabBar tabs={TABS} active={tab} onSelect={setTab} />
           <main>
-            {tab === "My Team" && <MyTeam leagueId={activeLeague} />}
-            {tab === "Standings" && <Standings leagueId={activeLeague} />}
-            {tab === "Matchups" && <Matchups leagueId={activeLeague} />}
-            {tab === "Draft" && <DraftView leagueId={activeLeague} />}
-            {tab === "Audit" && <Audit leagueId={activeLeague} />}
-            {tab === "Chat" && <Chat />}
+            {tab === "My Team" && <MyTeam leagueId={active} />}
+            {tab === "Standings" && <Standings leagueId={active} />}
+            {tab === "Matchups" && <Matchups leagueId={active} />}
+            {tab === "Draft" && <DraftView leagueId={active} />}
+            {tab === "Audit" && <Audit leagueId={active} />}
+            {tab === "Chat" && (
+              <div className="h-[72vh] rounded-xl border border-border bg-surface p-3">
+                <Chat />
+              </div>
+            )}
           </main>
-        </>
+        </div>
       )}
     </div>
   );
