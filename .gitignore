@@ -8,6 +8,7 @@ config/leagues.json
 config/rules.json
 config/rankings.json
 config/ktc-values.json
+config/dst-ranks.json
 
 # Cached Sleeper player dump (large, refetched on demand)
 .cache/

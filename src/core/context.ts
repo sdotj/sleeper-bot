@@ -4,9 +4,12 @@ import { SleeperClient } from "../adapters/sleeper/sleeperClient.js";
 import { SleeperSessionProvider } from "../auth/index.js";
 import { AuditLog, JsonFileStore } from "../audit/index.js";
 import {
+  DstOverlayValueProvider,
   GenericValueProvider,
   KtcValueProvider,
   SleeperRankValueProvider,
+  dstValueMap,
+  loadDstRanks,
   loadKtcSnapshot,
   type KtcMode,
   type PlayerLite,
@@ -50,8 +53,11 @@ export async function buildAppContext(config: ConfigRegistry): Promise<AppContex
   // One shared Sleeper client so the ~5MB players dump is cached across the
   // adapters and both value bridges.
   const sleeperClient = new SleeperClient();
-  const redraftValue = buildRedraftValue(sleeperClient);
-  const dynastyValue = await buildDynastyValue(sleeperClient);
+  // Defenses aren't ranked by KTC or Sleeper, so overlay a DST tier onto both
+  // value modes (its player ids are team codes, which is how Sleeper keys DEF).
+  const dst = await loadDstValueMap();
+  const redraftValue = withDst(buildRedraftValue(sleeperClient), dst);
+  const dynastyValue = withDst(await buildDynastyValue(sleeperClient), dst);
   // Per-league selection: a league's config `valueMode` decides which to use.
   const valueFor = (leagueId: string): ValueProvider =>
     config.get(leagueId).valueMode === "dynasty" ? dynastyValue : redraftValue;
@@ -69,6 +75,19 @@ export async function buildAppContext(config: ConfigRegistry): Promise<AppContex
   const pipeline = new ActionPipeline({ rules, audit, pending, valueFor, adapterFor });
   const draft = new DraftAssistant({ adapterFor, valueFor });
   return { config, adapterFor, valueFor, pipeline, audit, draft };
+}
+
+/** Load the DST tier (team code -> value); empty map if no ranks file is present. */
+async function loadDstValueMap(): Promise<Map<string, number>> {
+  const ranks =
+    (await loadDstRanks(process.env.SLEEPBOT_DST ?? "config/dst-ranks.json")) ??
+    (await loadDstRanks("config/dst-ranks.example.json"));
+  return ranks ? dstValueMap(ranks) : new Map();
+}
+
+/** Overlay DST values onto a base provider (no-op if the DST map is empty). */
+function withDst(base: ValueProvider, dst: Map<string, number>): ValueProvider {
+  return dst.size ? new DstOverlayValueProvider(base, dst) : base;
 }
 
 /** Redraft value from Sleeper's season-long ranks (covers K; doesn't inflate rookies). */

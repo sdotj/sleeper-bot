@@ -1,0 +1,10 @@
+{
+  "season": "2026",
+  "note": "Season-long DST (defense) quality tier, best -> worst. This is an editable preseason SEED estimate — refresh it, or override per week using the chat's web search for matchup-based streaming. Team codes match Sleeper DEF player ids. Copy to config/dst-ranks.json to customize.",
+  "order": [
+    "DEN", "PHI", "BAL", "HOU", "PIT", "MIN", "BUF", "KC",
+    "GB", "DET", "LAC", "SEA", "SF", "NYJ", "CLE", "LAR",
+    "WAS", "TB", "NO", "ARI", "IND", "MIA", "CIN", "DAL",
+    "ATL", "CHI", "JAX", "LV", "NE", "NYG", "TEN", "CAR"
+  ]
+}

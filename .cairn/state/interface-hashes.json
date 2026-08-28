@@ -7,11 +7,11 @@
   "sleepbot.auth:src/auth": "259a787d6d6f6aca",
   "sleepbot.chat:src/chat": "73145976280fb36e",
   "sleepbot.config:src/config": "38bbf6c335c128fc",
-  "sleepbot.core:src/core": "450edf9c41cdd72f",
+  "sleepbot.core:src/core": "629578c1b1f53d35",
   "sleepbot.draft:src/draft": "841ca5bda6d93333",
   "sleepbot.gui:web": "3fbcb92ebc0dbf14",
   "sleepbot.rules:src/rules": "e1f27515c3a738ec",
   "sleepbot.server:src/index.ts": "bd60acb658c79e45",
   "sleepbot.tools:src/tools": "476376f0ce2beb3b",
-  "sleepbot.value:src/value": "ae2b125f93f350aa"
+  "sleepbot.value:src/value": "6078d1f9f8f17bb0"
 }

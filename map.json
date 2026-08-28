@@ -655,8 +655,8 @@
           "kind": "function",
           "signature": "export_statement:export async function runChatTurn( ops: SleepBotOperations, history: ChatMessage[], opts: { model?: string; maxIterations?: number; maxTokens?: number; draftContext?: DraftContextRef; /** Enable the web-search server tool (on-demand). false disables it. */ web?: { maxUses?: number } | false; } = {}, ): Promise<{ reply: string; toolCalls: string[] }> { if (!process.env.ANTHROPIC_API_KEY) { throw new ChatUnavailableError( \"Chat is unavailable: set ANTHROPIC_API_KEY on the server to enable the assistant.\", ); } const client = new Anthropic(); const model = opts.model ?? process.env.ANTHROPIC_MODEL ?? \"claude-opus-5\"; const messages: Anthropic.MessageParam[] = history.map((m) => ({ role: m.role, content: m.content })); const toolCalls: string[] = []; const maxIterations = opts.maxIterations ?? 12; const maxTokens = opts.maxTokens ?? 4096; // Web search is a server-side tool: basic variant works across models // (incl. Haiku). It's available on-demand; the system prompt tells the model // to only reach for it when the user wants current external info. const webOn = opts.web !== false && (process.env.SLEEPBOT_WEB_SEARCH ?? \"on\") !== \"off\"; const tools: Anthropic.MessageCreateParams[\"tools\"] = [...CHAT_TOOLS]; if (webOn) { tools.push({ type: \"web_search_20250305\", name: \"web_search\", max_uses: (opts.web ? opts.web.maxUses : undefined) ?? 3, }); } // Resolve the live draft snapshot once at the start of the turn (seconds old // when the model answers). It's re-fetched fresh on the next turn. const system = opts.draftContext ? `${SYSTEM}\\n\\n${await draftContextBlock(ops, opts.draftContext)}` : SYSTEM; for (let i = 0; i < maxIterations; i++) { const res = await client.messages.create({ model, max_tokens: maxTokens, system, tools, messages, }); messages.push({ role: \"assistant\", content: res.content }); // Record server-side tool use (web search) for observability. for (const b of res.content) { if (b.type === \"server_tool_use\") toolCalls.push(b.name); } // A server tool (web search) is mid-run — let it continue, nothing to send back. if (res.stop_reason === \"pause_turn\") continue; if (res.stop_reason !== \"tool_use\") { const reply = res.content .filter((b): b is Anthropic.TextBlock => b.type === \"text\") .map((b) => b.text) .join(\"\\n\") .trim(); return { reply: reply || \"(no response)\", toolCalls }; } const results: Anthropic.ToolResultBlockParam[] = []; for (const block of res.content) { if (block.type === \"tool_use\") { toolCalls.push(block.name); try { const out = await dispatchTool(ops, block.name, block.input); results.push({ type: \"tool_result\", tool_use_id: block.id, content: JSON.stringify(out ?? null) }); } catch (err) { results.push({ type: \"tool_result\", tool_use_id: block.id, is_error: true, content: `Error: ${(err as Error).message}`, }); } } } // No custom tool actually ran (e.g. only server-tool blocks) — return text. if (results.length === 0) { const reply = res.content .filter((b): b is Anthropic.TextBlock => b.type === \"text\") .map((b) => b.text) .join(\"\\n\") .trim(); return { reply: reply || \"(no response)\", toolCalls }; } messages.push({ role: \"user\", content: results }); } return { reply: \"Stopped after too many tool calls — try a narrower question.\", toolCalls }; }",
           "file": "src/chat/chatLoop.ts",
-          "line": 43,
-          "end_line": 144
+          "line": 44,
+          "end_line": 145
         },
         {
           "name": "ChatUnavailableError",
@@ -790,10 +790,10 @@
         {
           "name": "buildAppContext",
           "kind": "function",
-          "signature": "export_statement:export async function buildAppContext(config: ConfigRegistry): Promise<AppContext> { const store = new JsonFileStore(); const audit = new AuditLog(store); const pending = new PendingStore(store); const rules = new RulesEngine(await loadRulesConfig()); // One shared Sleeper client so the ~5MB players dump is cached across the // adapters and both value bridges. const sleeperClient = new SleeperClient(); const redraftValue = buildRedraftValue(sleeperClient); const dynastyValue = await buildDynastyValue(sleeperClient); // Per-league selection: a league's config `valueMode` decides which to use. const valueFor = (leagueId: string): ValueProvider => config.get(leagueId).valueMode === \"dynasty\" ? dynastyValue : redraftValue; const adapters = new Map<string, WriteableLeagueAdapter>(); const adapterFor = (leagueId: string): WriteableLeagueAdapter => { let adapter = adapters.get(leagueId); if (!adapter) { adapter = buildAdapter(config.get(leagueId), sleeperClient); adapters.set(leagueId, adapter); } return adapter; }; const pipeline = new ActionPipeline({ rules, audit, pending, valueFor, adapterFor }); const draft = new DraftAssistant({ adapterFor, valueFor }); return { config, adapterFor, valueFor, pipeline, audit, draft }; }",
+          "signature": "export_statement:export async function buildAppContext(config: ConfigRegistry): Promise<AppContext> { const store = new JsonFileStore(); const audit = new AuditLog(store); const pending = new PendingStore(store); const rules = new RulesEngine(await loadRulesConfig()); // One shared Sleeper client so the ~5MB players dump is cached across the // adapters and both value bridges. const sleeperClient = new SleeperClient(); // Defenses aren't ranked by KTC or Sleeper, so overlay a DST tier onto both // value modes (its player ids are team codes, which is how Sleeper keys DEF). const dst = await loadDstValueMap(); const redraftValue = withDst(buildRedraftValue(sleeperClient), dst); const dynastyValue = withDst(await buildDynastyValue(sleeperClient), dst); // Per-league selection: a league's config `valueMode` decides which to use. const valueFor = (leagueId: string): ValueProvider => config.get(leagueId).valueMode === \"dynasty\" ? dynastyValue : redraftValue; const adapters = new Map<string, WriteableLeagueAdapter>(); const adapterFor = (leagueId: string): WriteableLeagueAdapter => { let adapter = adapters.get(leagueId); if (!adapter) { adapter = buildAdapter(config.get(leagueId), sleeperClient); adapters.set(leagueId, adapter); } return adapter; }; const pipeline = new ActionPipeline({ rules, audit, pending, valueFor, adapterFor }); const draft = new DraftAssistant({ adapterFor, valueFor }); return { config, adapterFor, valueFor, pipeline, audit, draft }; }",
           "file": "src/core/context.ts",
-          "line": 44,
-          "end_line": 72
+          "line": 47,
+          "end_line": 78
         },
         {
           "name": "SleepBotOperations",
@@ -816,8 +816,8 @@
           "kind": "interface",
           "signature": "export_statement:export interface AppContext { config: ConfigRegistry; /** The write-capable adapter for a league (also serves reads), cached per league. */ adapterFor(leagueId: string): WriteableLeagueAdapter; /** Player value for a league, per its configured mode (redraft vs dynasty). */ valueFor(leagueId: string): ValueProvider; pipeline: ActionPipeline; audit: AuditLog; draft: DraftAssistant; }",
           "file": "src/core/context.ts",
-          "line": 28,
-          "end_line": 37
+          "line": 31,
+          "end_line": 40
         },
         {
           "name": "export { SleepBotOperations, proposalOutcome } from \"./operations.js\";",
@@ -1443,6 +1443,8 @@
       ],
       "files": [
         "src/value/ValueProvider.ts",
+        "src/value/dst.test.ts",
+        "src/value/dst.ts",
         "src/value/genericValueProvider.ts",
         "src/value/index.ts",
         "src/value/ktc.test.ts",
@@ -1454,12 +1456,28 @@
       "contracts": [],
       "symbols": [
         {
+          "name": "loadDstRanks",
+          "kind": "function",
+          "signature": "export_statement:export async function loadDstRanks(path: string): Promise<DstRanks | null> { try { const parsed = JSON.parse(await readFile(path, \"utf8\")) as DstRanks; return Array.isArray(parsed.order) && parsed.order.length ? parsed : null; } catch { return null; } }",
+          "file": "src/value/dst.ts",
+          "line": 24,
+          "end_line": 31
+        },
+        {
           "name": "loadKtcSnapshot",
           "kind": "function",
           "signature": "export_statement:export async function loadKtcSnapshot(path: string): Promise<KtcPlayer[]> { const parsed = JSON.parse(await readFile(path, \"utf8\")) as { players?: KtcPlayer[] } | KtcPlayer[]; return Array.isArray(parsed) ? parsed : (parsed.players ?? []); }",
           "file": "src/value/ktc.ts",
           "line": 102,
           "end_line": 105
+        },
+        {
+          "name": "DstOverlayValueProvider",
+          "kind": "class",
+          "signature": "export_statement:export class DstOverlayValueProvider implements ValueProvider { constructor( private readonly base: ValueProvider, private readonly dst: Map<string, number>, ) {} async getValue(playerId: string): Promise<number> { const d = this.dst.get(playerId); return d !== undefined ? d : this.base.getValue(playerId); } async getValues(playerIds: string[]): Promise<Map<string, number>> { const overlay = playerIds.filter((id) => this.dst.has(id)); const rest = playerIds.filter((id) => !this.dst.has(id)); const baseVals = rest.length ? await this.base.getValues(rest) : new Map<string, number>(); const out = new Map<string, number>(); for (const id of overlay) out.set(id, this.dst.get(id)!); for (const id of rest) out.set(id, baseVals.get(id) ?? 0); return out; } }",
+          "file": "src/value/dst.ts",
+          "line": 47,
+          "end_line": 67
         },
         {
           "name": "GenericValueProvider",
@@ -1486,6 +1504,14 @@
           "end_line": 61
         },
         {
+          "name": "dstValueMap",
+          "kind": "function",
+          "signature": "export_statement:export function dstValueMap(ranks: DstRanks): Map<string, number> { const map = new Map<string, number>(); ranks.order.forEach((team, i) => { map.set(team.toUpperCase(), Math.round(TOP_VALUE * Math.exp(-i / DECAY))); }); return map; }",
+          "file": "src/value/dst.ts",
+          "line": 34,
+          "end_line": 40
+        },
+        {
           "name": "nameKey",
           "kind": "function",
           "signature": "export_statement:export function nameKey(name: string, position: string): string { return `${normalizeName(name)}|${position.toUpperCase()}`; }",
@@ -1500,6 +1526,14 @@
           "file": "src/value/ktc.ts",
           "line": 92,
           "end_line": 99
+        },
+        {
+          "name": "DstRanks",
+          "kind": "interface",
+          "signature": "export_statement:export interface DstRanks { season?: string; /** Team codes, best defense first. */ order: string[]; }",
+          "file": "src/value/dst.ts",
+          "line": 18,
+          "end_line": 22
         },
         {
           "name": "KtcPlayer",
@@ -1562,8 +1596,8 @@
           "kind": "other",
           "signature": "export_statement:export { KtcValueProvider, loadKtcSnapshot, normalizeName, nameKey, type KtcMode, type KtcPlayer, type PlayerLite, } from \"./ktc.js\";",
           "file": "src/value/index.ts",
-          "line": 4,
-          "end_line": 12
+          "line": 5,
+          "end_line": 13
         },
         {
           "name": "export { SleeperRankValueProvider, type RankedPlayer } from \"./sleeperRank.js\";",
@@ -1572,6 +1606,14 @@
           "file": "src/value/index.ts",
           "line": 3,
           "end_line": 3
+        },
+        {
+          "name": "export { loadDstRanks, dstValueMap, DstOverlayValueProvider, type DstRanks } from \"./dst.js\";",
+          "kind": "other",
+          "signature": "export_statement:export { loadDstRanks, dstValueMap, DstOverlayValueProvider, type DstRanks } from \"./dst.js\";",
+          "file": "src/value/index.ts",
+          "line": 4,
+          "end_line": 4
         }
       ]
     }
