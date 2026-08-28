@@ -173,3 +173,15 @@ statically, and point the `Store` at a hosted DB.
   while live), and chat with real draft context. Picks are made by you in Sleeper
   (their pick-submit is an undocumented real-time websocket).
 - **Phase 4** — `EspnAdapter` against ESPN's cookie-based API, same interface
+
+## License & disclaimer
+
+MIT — see [LICENSE](LICENSE). You're free to use, modify, and distribute it.
+
+**Not affiliated with Sleeper, ESPN, or KeepTradeCut.** SleepBot talks to
+Sleeper's **unofficial, undocumented private API** for writes; that can break at
+any time and may be against their terms — use it at your own risk, with your own
+account. The write protocol is derived from the community project
+[cameron-eth/sleeper-sdk](https://github.com/cameron-eth/sleeper-sdk), and player
+values come from KeepTradeCut data. The software is provided "as is", without
+warranty (see the LICENSE).

@@ -1,7 +1,8 @@
 {
   "name": "sleepbot",
   "version": "0.1.0",
-  "description": "MCP server connecting Claude to fantasy football leagues (Sleeper read-only, Phase 1)",
+  "description": "MCP server + GUI connecting Claude to fantasy football leagues",
+  "license": "MIT",
   "type": "module",
   "bin": {
     "sleepbot": "dist/index.js"
