@@ -126,7 +126,17 @@ export function buildApiServer(ops: SleepBotOperations): FastifyInstance {
     try {
       const { messages, draftContext } =
         (req.body as { messages?: ChatMessage[]; draftContext?: DraftContextRef }) ?? {};
-      return await runChatTurn(ops, messages ?? [], { draftContext });
+      // In a draft room, keep it snappy: a fast model, tight token budget, and
+      // web capped to 1 use (the live board answers most questions with none).
+      // The main chat can run a stronger model with freer web.
+      const inDraft = !!draftContext;
+      return await runChatTurn(ops, messages ?? [], {
+        draftContext,
+        model: inDraft ? process.env.ANTHROPIC_DRAFT_MODEL ?? process.env.ANTHROPIC_MODEL : undefined,
+        maxTokens: inDraft ? 1500 : 4096,
+        maxIterations: inDraft ? 8 : 12,
+        web: { maxUses: inDraft ? 1 : 3 },
+      });
     } catch (err) {
       if (err instanceof ChatUnavailableError) return reply.status(503).send({ error: err.message });
       return fail(reply, err);

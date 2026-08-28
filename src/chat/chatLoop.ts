@@ -43,7 +43,14 @@ const SYSTEM = `You are SleepBot, a fantasy-football assistant for the user's Sl
 export async function runChatTurn(
   ops: SleepBotOperations,
   history: ChatMessage[],
-  opts: { model?: string; maxIterations?: number; draftContext?: DraftContextRef } = {},
+  opts: {
+    model?: string;
+    maxIterations?: number;
+    maxTokens?: number;
+    draftContext?: DraftContextRef;
+    /** Enable the web-search server tool (on-demand). false disables it. */
+    web?: { maxUses?: number } | false;
+  } = {},
 ): Promise<{ reply: string; toolCalls: string[] }> {
   if (!process.env.ANTHROPIC_API_KEY) {
     throw new ChatUnavailableError(
@@ -56,6 +63,20 @@ export async function runChatTurn(
   const messages: Anthropic.MessageParam[] = history.map((m) => ({ role: m.role, content: m.content }));
   const toolCalls: string[] = [];
   const maxIterations = opts.maxIterations ?? 12;
+  const maxTokens = opts.maxTokens ?? 4096;
+
+  // Web search is a server-side tool: basic variant works across models
+  // (incl. Haiku). It's available on-demand; the system prompt tells the model
+  // to only reach for it when the user wants current external info.
+  const webOn = opts.web !== false && (process.env.SLEEPBOT_WEB_SEARCH ?? "on") !== "off";
+  const tools: Anthropic.MessageCreateParams["tools"] = [...CHAT_TOOLS];
+  if (webOn) {
+    tools.push({
+      type: "web_search_20250305",
+      name: "web_search",
+      max_uses: (opts.web ? opts.web.maxUses : undefined) ?? 3,
+    });
+  }
 
   // Resolve the live draft snapshot once at the start of the turn (seconds old
   // when the model answers). It's re-fetched fresh on the next turn.
@@ -66,12 +87,20 @@ export async function runChatTurn(
   for (let i = 0; i < maxIterations; i++) {
     const res = await client.messages.create({
       model,
-      max_tokens: 4096,
+      max_tokens: maxTokens,
       system,
-      tools: CHAT_TOOLS,
+      tools,
       messages,
     });
     messages.push({ role: "assistant", content: res.content });
+
+    // Record server-side tool use (web search) for observability.
+    for (const b of res.content) {
+      if (b.type === "server_tool_use") toolCalls.push(b.name);
+    }
+
+    // A server tool (web search) is mid-run — let it continue, nothing to send back.
+    if (res.stop_reason === "pause_turn") continue;
 
     if (res.stop_reason !== "tool_use") {
       const reply = res.content
@@ -98,6 +127,15 @@ export async function runChatTurn(
           });
         }
       }
+    }
+    // No custom tool actually ran (e.g. only server-tool blocks) — return text.
+    if (results.length === 0) {
+      const reply = res.content
+        .filter((b): b is Anthropic.TextBlock => b.type === "text")
+        .map((b) => b.text)
+        .join("\n")
+        .trim();
+      return { reply: reply || "(no response)", toolCalls };
     }
     messages.push({ role: "user", content: results });
   }
@@ -142,6 +180,7 @@ async function draftContextBlock(ops: SleepBotOperations, ref: DraftContextRef):
       `Top available overall (value-over-replacement, need-weighted): ${overall}.`,
       `Best available by position: ${perPos}.`,
       `Values reflect the league's mode (redraft = Sleeper season ranks, dynasty = KTC). For deeper queries call the draft tools with draftId ${ref.draftId}.`,
+      `SPEED: this is a live draft with a pick clock. Answer who-to-pick / availability questions IMMEDIATELY from this snapshot — do NOT web-search for those, the data is already current. Only web_search when the user explicitly asks for news, injuries, or outside opinion. Keep answers short.`,
     ].join("\n");
   } catch (err) {
     return `## LIVE DRAFT ROOM\n(Could not load the live board: ${(err as Error).message}. Use the draft tools with draftId ${ref.draftId} to fetch it.)`;
