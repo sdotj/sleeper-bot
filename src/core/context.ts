@@ -6,9 +6,11 @@ import { AuditLog, JsonFileStore } from "../audit/index.js";
 import {
   GenericValueProvider,
   KtcValueProvider,
+  SleeperRankValueProvider,
   loadKtcSnapshot,
   type KtcMode,
   type PlayerLite,
+  type RankedPlayer,
   type ValueProvider,
 } from "../value/index.js";
 import { RulesEngine, loadRulesConfig } from "../rules/index.js";
@@ -27,6 +29,8 @@ export interface AppContext {
   config: ConfigRegistry;
   /** The write-capable adapter for a league (also serves reads), cached per league. */
   adapterFor(leagueId: string): WriteableLeagueAdapter;
+  /** Player value for a league, per its configured mode (redraft vs dynasty). */
+  valueFor(leagueId: string): ValueProvider;
   pipeline: ActionPipeline;
   audit: AuditLog;
   draft: DraftAssistant;
@@ -44,9 +48,13 @@ export async function buildAppContext(config: ConfigRegistry): Promise<AppContex
   const rules = new RulesEngine(await loadRulesConfig());
 
   // One shared Sleeper client so the ~5MB players dump is cached across the
-  // adapters and the KTC value bridge.
+  // adapters and both value bridges.
   const sleeperClient = new SleeperClient();
-  const value = await buildValueProvider(sleeperClient);
+  const redraftValue = buildRedraftValue(sleeperClient);
+  const dynastyValue = await buildDynastyValue(sleeperClient);
+  // Per-league selection: a league's config `valueMode` decides which to use.
+  const valueFor = (leagueId: string): ValueProvider =>
+    config.get(leagueId).valueMode === "dynasty" ? dynastyValue : redraftValue;
 
   const adapters = new Map<string, WriteableLeagueAdapter>();
   const adapterFor = (leagueId: string): WriteableLeagueAdapter => {
@@ -58,18 +66,28 @@ export async function buildAppContext(config: ConfigRegistry): Promise<AppContex
     return adapter;
   };
 
-  const pipeline = new ActionPipeline({ rules, audit, pending, value, adapterFor });
-  const draft = new DraftAssistant({ adapterFor, value });
-  return { config, adapterFor, pipeline, audit, draft };
+  const pipeline = new ActionPipeline({ rules, audit, pending, valueFor, adapterFor });
+  const draft = new DraftAssistant({ adapterFor, valueFor });
+  return { config, adapterFor, valueFor, pipeline, audit, draft };
+}
+
+/** Redraft value from Sleeper's season-long ranks (covers K; doesn't inflate rookies). */
+function buildRedraftValue(sleeperClient: SleeperClient): ValueProvider {
+  const loadPlayers = async (): Promise<RankedPlayer[]> =>
+    Object.values(await sleeperClient.getPlayers()).map((p) => ({
+      playerId: p.player_id,
+      position: p.position ?? "",
+      searchRank: p.search_rank ?? null,
+    }));
+  return new SleeperRankValueProvider(loadPlayers);
 }
 
 /**
- * Build the value provider: prefer KeepTradeCut values (bridged to Sleeper ids)
- * when a snapshot is present, else fall back to the generic file/neutral
- * provider (dec.rules-engine-and-value). Mode (superflex vs 1-QB) is
- * configurable via SLEEPBOT_KTC_MODE, defaulting to superflex.
+ * Dynasty value from KeepTradeCut (bridged to Sleeper ids) when a snapshot is
+ * present, else the generic file/neutral fallback (dec.rules-engine-and-value).
+ * KTC mode (superflex vs 1-QB) is set by SLEEPBOT_KTC_MODE, defaulting to superflex.
  */
-async function buildValueProvider(sleeperClient: SleeperClient): Promise<ValueProvider> {
+async function buildDynastyValue(sleeperClient: SleeperClient): Promise<ValueProvider> {
   const paths = [
     process.env.SLEEPBOT_KTC ?? "config/ktc-values.json",
     "config/ktc-values.example.json",

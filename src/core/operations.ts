@@ -100,6 +100,14 @@ export class SleepBotOperations {
   ) {
     return this.ctx.draft.recommend(leagueId, draftId, opts);
   }
+  /** Best available at every position (keeps K/DEF visible). */
+  getDraftBestByPosition(
+    leagueId: string,
+    draftId: string,
+    opts: { rosterId?: number; perPosition?: number } = {},
+  ) {
+    return this.ctx.draft.bestByPosition(leagueId, draftId, opts);
+  }
 
   // --- writes (confirm-by-default via the pipeline) ------------------------
 

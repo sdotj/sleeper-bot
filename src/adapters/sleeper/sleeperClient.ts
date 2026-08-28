@@ -21,6 +21,10 @@ export interface SleeperPlayer {
   position?: string | null;
   team?: string | null;
   status?: string | null;
+  /** Sleeper's overall season-long rank (lower = better; ~9999999 = unranked). */
+  search_rank?: number | null;
+  /** Years of NFL experience; 0 = rookie. */
+  years_exp?: number | null;
 }
 
 export interface SleeperNflState {

@@ -108,9 +108,10 @@ export async function runChatTurn(
 /** Build a compact live-draft snapshot to prepend to the system prompt. */
 async function draftContextBlock(ops: SleepBotOperations, ref: DraftContextRef): Promise<string> {
   try {
-    const [board, recs] = await Promise.all([
+    const [board, recs, byPos] = await Promise.all([
       ops.getDraftBoard(ref.leagueId, ref.draftId, ref.rosterId),
       ops.getDraftRecommendations(ref.leagueId, ref.draftId, { rosterId: ref.rosterId, limit: 12 }),
+      ops.getDraftBestByPosition(ref.leagueId, ref.draftId, { rosterId: ref.rosterId, perPosition: 3 }),
     ]);
     const otc = board.onTheClock
       ? `pick #${board.onTheClock.pickNo} (round ${board.onTheClock.round}, slot ${board.onTheClock.slot}` +
@@ -121,19 +122,26 @@ async function draftContextBlock(ops: SleepBotOperations, ref: DraftContextRef):
         .slice(0, 8)
         .map((p) => `#${p.pickNo} ${p.playerName} (${p.position})`)
         .join(", ") || "none yet";
-    const available = recs
+    const overall = recs
       .map((r) => `${r.name} (${r.position}${r.team ? ` ${r.team}` : ""}, val ${r.value})`)
       .join("; ");
+    // Per-position so kickers, defenses, and every position stay visible even
+    // late in the draft when they don't crack the overall top list.
+    const perPos = ["QB", "RB", "WR", "TE", "K", "DEF"]
+      .filter((pos) => byPos[pos]?.length)
+      .map((pos) => `${pos}: ${byPos[pos].map((r) => r.name).join(", ")}`)
+      .join(" | ");
     return [
       `## LIVE DRAFT ROOM (this is the user's active draft; snapshot current as of this message)`,
       `draftId ${ref.draftId} · status ${board.draft.status} · ${board.draft.type} · ${board.draft.rounds} rounds × ${board.draft.teams} teams · ${board.pickCount} picks made.`,
       `On the clock: ${otc}.`,
       ref.rosterId != null
         ? `The user is roster ${ref.rosterId}; their next pick is #${board.yourNextPickNo ?? "unknown"}.`
-        : `The user did not set their roster/slot, so "your next pick" is unavailable.`,
+        : `The user did not set their roster/slot, so "your next pick" and roster-need weighting are unavailable.`,
       `Recent picks (newest first): ${recent}.`,
-      `Top available by value now: ${available}.`,
-      `Values are KeepTradeCut (mode set by the server). For deeper queries (filter a position, more of the board) call the draft tools with draftId ${ref.draftId}.`,
+      `Top available overall (value-over-replacement, need-weighted): ${overall}.`,
+      `Best available by position: ${perPos}.`,
+      `Values reflect the league's mode (redraft = Sleeper season ranks, dynasty = KTC). For deeper queries call the draft tools with draftId ${ref.draftId}.`,
     ].join("\n");
   } catch (err) {
     return `## LIVE DRAFT ROOM\n(Could not load the live board: ${(err as Error).message}. Use the draft tools with draftId ${ref.draftId} to fetch it.)`;

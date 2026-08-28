@@ -40,6 +40,13 @@ export const leagueEntrySchema = z
     platform: z.enum(["sleeper", "espn"]),
     sleeper: sleeperConfig.optional(),
     espn: espnConfig.optional(),
+    /**
+     * How to value players for this league: "redraft" (Sleeper season-long
+     * ranks — the default; covers kickers, doesn't inflate rookies) or
+     * "dynasty" (KeepTradeCut long-term values). Affects draft recommendations
+     * and trade-fairness warnings.
+     */
+    valueMode: z.enum(["redraft", "dynasty"]).default("redraft"),
   })
   .superRefine((entry, ctx) => {
     if (entry.platform === "sleeper" && !entry.sleeper) {

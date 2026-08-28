@@ -35,7 +35,7 @@ function pipeline(cfg: unknown, adapter: WriteableLeagueAdapter) {
       rules: new RulesEngine(rulesConfigSchema.parse(cfg)),
       audit,
       pending,
-      value: new GenericValueProvider({}),
+      valueFor: () => new GenericValueProvider({}),
       adapterFor: () => adapter,
     }),
   };

@@ -3,6 +3,7 @@
     {
       "id": "my-main-league",
       "platform": "sleeper",
+      "valueMode": "redraft",
       "sleeper": {
         "leagueId": "123456789012345678",
         "username": "yourusername"

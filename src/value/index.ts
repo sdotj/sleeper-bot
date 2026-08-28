@@ -1,5 +1,6 @@
 export type { ValueProvider } from "./ValueProvider.js";
 export { GenericValueProvider } from "./genericValueProvider.js";
+export { SleeperRankValueProvider, type RankedPlayer } from "./sleeperRank.js";
 export {
   KtcValueProvider,
   loadKtcSnapshot,

@@ -4,7 +4,20 @@ import type { DraftBoard, DraftRecommendation, OnTheClock } from "./types.js";
 
 export interface DraftDeps {
   adapterFor(leagueId: string): LeagueAdapter;
-  value: ValueProvider;
+  /** Value provider for a league (redraft vs dynasty is per-league config). */
+  valueFor(leagueId: string): ValueProvider;
+}
+
+/** Bonus added to a player's VORP when their roster still needs that position. */
+const NEED_BONUS = 400;
+
+/** An available player scored for draft ranking. */
+interface ScoredPlayer {
+  p: Player;
+  value: number;
+  vorp: number;
+  score: number;
+  needed: boolean;
 }
 
 /**
@@ -49,6 +62,41 @@ export class DraftAssistant {
     draftId: string,
     opts: { rosterId?: number; position?: string; limit?: number } = {},
   ): Promise<DraftRecommendation[]> {
+    const { scored } = await this.scoreAvailable(leagueId, draftId, opts.rosterId);
+    const position = opts.position?.toUpperCase();
+    return scored
+      .filter((s) => !position || s.p.position === position)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, opts.limit ?? 10)
+      .map((s) => this.toRec(s.p, s.value, s.vorp, s.needed));
+  }
+
+  /** Best available at each position (one pass) — used to keep K/DEF visible in chat context. */
+  async bestByPosition(
+    leagueId: string,
+    draftId: string,
+    opts: { rosterId?: number; perPosition?: number } = {},
+  ): Promise<Record<string, DraftRecommendation[]>> {
+    const { scored } = await this.scoreAvailable(leagueId, draftId, opts.rosterId);
+    const perPosition = opts.perPosition ?? 3;
+    const out: Record<string, ScoredPlayer[]> = {};
+    for (const s of scored) (out[s.p.position] ??= []).push(s);
+    const result: Record<string, DraftRecommendation[]> = {};
+    for (const [pos, list] of Object.entries(out)) {
+      result[pos] = list
+        .sort((a, b) => b.score - a.score)
+        .slice(0, perPosition)
+        .map((s) => this.toRec(s.p, s.value, s.vorp, s.needed));
+    }
+    return result;
+  }
+
+  /** Score every available player by value-over-replacement + roster-need boost. */
+  private async scoreAvailable(
+    leagueId: string,
+    draftId: string,
+    rosterId?: number,
+  ): Promise<{ draft: Draft; scored: ScoredPlayer[] }> {
     const adapter = this.deps.adapterFor(leagueId);
     const [draft, picks, pool] = await Promise.all([
       adapter.getDraft(draftId),
@@ -57,16 +105,19 @@ export class DraftAssistant {
     ]);
 
     const taken = new Set(picks.map((p) => p.playerId));
-    const position = opts.position?.toUpperCase();
-    const available = pool.filter((p) => !taken.has(p.playerId) && (!position || p.position === position));
-    const values = await this.deps.value.getValues(available.map((p) => p.playerId));
+    const available = pool.filter((p) => !taken.has(p.playerId));
+    const values = await this.deps.valueFor(leagueId).getValues(available.map((p) => p.playerId));
 
-    const ranked = available
-      .map((p) => ({ p, v: values.get(p.playerId) ?? 0 }))
-      .sort((a, b) => b.v - a.v);
+    const replacement = this.replacementByPosition(draft, available, values);
+    const needs = rosterId != null ? this.rosterNeeds(draft, picks, rosterId) : null;
 
-    const needs = opts.rosterId != null ? this.rosterNeeds(draft, picks, opts.rosterId) : null;
-    return ranked.slice(0, opts.limit ?? 10).map(({ p, v }) => this.toRec(p, v, needs));
+    const scored = available.map((p) => {
+      const value = values.get(p.playerId) ?? 0;
+      const vorp = value - (replacement[p.position] ?? 0);
+      const needBoost = needs && needs[p.position] ? NEED_BONUS * needs[p.position] : 0;
+      return { p, value, vorp, score: vorp + needBoost, needed: !!(needs && needs[p.position]) };
+    });
+    return { draft, scored };
   }
 
   // --- internals -----------------------------------------------------------
@@ -114,9 +165,47 @@ export class DraftAssistant {
     return needs;
   }
 
-  private toRec(p: Player, value: number, needs: Record<string, number> | null): DraftRecommendation {
-    const parts = [`value ${value}`];
-    if (needs && needs[p.position]) parts.push(`fills a ${p.position} need`);
+  /**
+   * Replacement value per position = the value of the last "startable" player at
+   * that position across the league (teams × starters/team, flex shared among
+   * RB/WR/TE, superflex added to QB). Value above that is what makes a pick
+   * valuable — the basis for value-over-replacement.
+   */
+  private replacementByPosition(
+    draft: Draft,
+    available: Player[],
+    values: Map<string, number>,
+  ): Record<string, number> {
+    const slots = draft.starterSlots;
+    const flexShare = (slots.FLEX ?? 0) / 3; // RB/WR/TE split the flex
+    const startersPerTeam: Record<string, number> = {
+      QB: (slots.QB ?? 0) + (slots.SUPER_FLEX ?? 0),
+      RB: (slots.RB ?? 0) + flexShare,
+      WR: (slots.WR ?? 0) + flexShare,
+      TE: (slots.TE ?? 0) + flexShare,
+      K: slots.K ?? 0,
+      DEF: slots.DEF ?? 0,
+    };
+
+    const byPos = new Map<string, number[]>();
+    for (const p of available) {
+      const arr = byPos.get(p.position) ?? [];
+      arr.push(values.get(p.playerId) ?? 0);
+      byPos.set(p.position, arr);
+    }
+
+    const replacement: Record<string, number> = {};
+    for (const [pos, vals] of byPos) {
+      vals.sort((a, b) => b - a);
+      const idx = Math.max(1, Math.round((draft.teams || 12) * (startersPerTeam[pos] ?? 0)));
+      replacement[pos] = vals[idx] ?? vals[vals.length - 1] ?? 0;
+    }
+    return replacement;
+  }
+
+  private toRec(p: Player, value: number, vorp: number, needed: boolean): DraftRecommendation {
+    const parts = [`value ${value}`, `VORP ${Math.round(vorp)}`];
+    if (needed) parts.push(`fills a ${p.position} need`);
     return { playerId: p.playerId, name: p.fullName, position: p.position, team: p.team, value, reason: parts.join(" · ") };
   }
 }

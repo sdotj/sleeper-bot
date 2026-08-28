@@ -17,7 +17,8 @@ export interface PipelineDeps {
   rules: RulesEngine;
   audit: AuditLog;
   pending: PendingStore;
-  value: ValueProvider;
+  /** The value provider for a league (its dynasty/redraft mode is per-league). */
+  valueFor(leagueId: string): ValueProvider;
   adapterFor(leagueId: string): WriteableLeagueAdapter;
 }
 
@@ -36,7 +37,7 @@ export class ActionPipeline {
     const verdict = await this.deps.rules.evaluate(
       kind,
       payload,
-      await this.ruleContext(adapter, kind, payload),
+      await this.ruleContext(leagueId, adapter, kind, payload),
     );
 
     const action: ProposedAction = {
@@ -91,7 +92,7 @@ export class ActionPipeline {
     const verdict = await this.deps.rules.evaluate(
       action.kind,
       action.payload,
-      await this.ruleContext(adapter, action.kind, action.payload),
+      await this.ruleContext(action.leagueId, adapter, action.kind, action.payload),
     );
     if (verdict.decision === "block") {
       action.status = "rejected";
@@ -151,13 +152,14 @@ export class ActionPipeline {
   }
 
   private async ruleContext(
+    leagueId: string,
     adapter: WriteableLeagueAdapter,
     kind: ActionKind,
     payload: WritePayload,
   ): Promise<RuleContext> {
     const ids = this.playersInvolved(kind, payload);
     const refs = ids.length ? await adapter.resolvePlayers(ids) : [];
-    return { names: new Map(refs.map((r) => [r.playerId, r.name])), value: this.deps.value };
+    return { names: new Map(refs.map((r) => [r.playerId, r.name])), value: this.deps.valueFor(leagueId) };
   }
 
   private playersInvolved(kind: ActionKind, payload: WritePayload): string[] {

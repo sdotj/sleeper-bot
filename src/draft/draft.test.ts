@@ -40,7 +40,7 @@ function assistant(picks: DraftPick[]) {
     getValue: async (id) => values.get(id) ?? 0,
     getValues: async (ids) => new Map(ids.map((id) => [id, values.get(id) ?? 0])),
   };
-  return new DraftAssistant({ adapterFor: () => adapter, value });
+  return new DraftAssistant({ adapterFor: () => adapter, valueFor: () => value });
 }
 
 const pick = (over: Partial<DraftPick>): DraftPick => ({
@@ -93,5 +93,46 @@ describe("DraftAssistant recommendations", () => {
     expect(recs.every((r) => r.position === "WR")).toBe(true);
     expect(recs[0]).toMatchObject({ playerId: "wr1" });
     expect(recs[0].reason).toMatch(/fills a WR need/);
+  });
+});
+
+describe("DraftAssistant VORP + need-weighting (K/DEF)", () => {
+  const draft2: Draft = { ...draft, starterSlots: { QB: 1, RB: 2, WR: 2, TE: 1, K: 1, DEF: 1 } };
+  const pool2: Player[] = [
+    { playerId: "wrA", fullName: "Elite WR", position: "WR", team: "CIN", status: null },
+    { playerId: "kA", fullName: "Top K", position: "K", team: "DAL", status: null },
+    { playerId: "defA", fullName: "Top DEF", position: "DEF", team: "PHI", status: null },
+  ];
+  const values2 = new Map([["wrA", 9000], ["kA", 800], ["defA", 300]]);
+  const assistant2 = (picks: DraftPick[]) => {
+    const adapter = {
+      getDraft: async () => draft2,
+      getDraftPicks: async () => picks,
+      getDraftablePlayers: async () => pool2,
+    } as unknown as LeagueAdapter;
+    const value: ValueProvider = {
+      getValue: async (id) => values2.get(id) ?? 0,
+      getValues: async (ids) => new Map(ids.map((id) => [id, values2.get(id) ?? 0])),
+    };
+    return new DraftAssistant({ adapterFor: () => adapter, valueFor: () => value });
+  };
+
+  it("keeps K/DEF below skill players by default but surfaces them per position", async () => {
+    const recs = await assistant2([]).recommend("L", "d1");
+    expect(recs[0].playerId).toBe("wrA"); // elite WR leads, not the kicker
+
+    const byPos = await assistant2([]).bestByPosition("L", "d1");
+    expect(byPos.K?.[0]?.name).toBe("Top K");
+    expect(byPos.DEF?.[0]?.name).toBe("Top DEF"); // visible even though low value
+  });
+
+  it("need-weighting lifts a needed K/DEF above a position that's already filled", async () => {
+    // roster 101 filled both WR slots -> WR no longer needed; K and DEF still are.
+    const picks = [
+      pick({ playerId: "w1", rosterId: 101, position: "WR" }),
+      pick({ playerId: "w2", rosterId: 101, position: "WR" }),
+    ];
+    const recs = await assistant2(picks).recommend("L", "d1", { rosterId: 101 });
+    expect(["kA", "defA"]).toContain(recs[0].playerId);
   });
 });

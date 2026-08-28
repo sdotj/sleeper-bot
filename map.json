@@ -32,10 +32,10 @@
         {
           "name": "ActionPipeline",
           "kind": "class",
-          "signature": "export_statement:export class ActionPipeline { constructor(private readonly deps: PipelineDeps) {} async propose(leagueId: string, kind: ActionKind, payload: WritePayload): Promise<ProposedAction> { const adapter = this.deps.adapterFor(leagueId); const verdict = await this.deps.rules.evaluate( kind, payload, await this.ruleContext(adapter, kind, payload), ); const action: ProposedAction = { id: randomUUID(), leagueId, kind, payload, status: verdict.decision === \"block\" ? \"rejected\" : \"pending\", verdict, createdMs: Date.now(), }; if (verdict.decision === \"block\") { await this.deps.audit.record({ actionId: action.id, leagueId, type: \"rejected\", actor: \"rule\", summary: `${kind} blocked: ${verdict.blockedReasons.join(\"; \")}`, detail: verdict, }); return action; // not stored; caller sees the block reasons } await this.deps.audit.record({ actionId: action.id, leagueId, type: \"proposed\", actor: \"user\", summary: `${kind} proposed` + (verdict.warnings.length ? ` (warnings: ${verdict.warnings.join(\"; \")})` : \"\"), detail: action, }); await this.deps.pending.put(action); // Auto mode: it passed every block rule, so execute now (still audited). if (this.deps.rules.mode === \"auto\") { return this.execute(action.id, \"auto\"); } return action; } async execute(actionId: string, actor: \"user\" | \"auto\" = \"user\"): Promise<ProposedAction> { const action = await this.deps.pending.get(actionId); if (!action || action.status !== \"pending\") { throw new Error(`no pending action with id ${actionId}`); } const adapter = this.deps.adapterFor(action.leagueId); // Re-validate at execution time — rules or rosters may have changed. const verdict = await this.deps.rules.evaluate( action.kind, action.payload, await this.ruleContext(adapter, action.kind, action.payload), ); if (verdict.decision === \"block\") { action.status = \"rejected\"; action.verdict = verdict; await this.deps.audit.record({ actionId, leagueId: action.leagueId, type: \"rejected\", actor: \"rule\", summary: `${action.kind} blocked at execution: ${verdict.blockedReasons.join(\"; \")}`, detail: verdict, }); await this.deps.pending.remove(actionId); throw new Error(`action ${actionId} is now blocked: ${verdict.blockedReasons.join(\"; \")}`); } try { const result = await this.dispatch(adapter, action); action.status = \"executed\"; action.result = { platformRef: result.platformRef, message: result.message }; await this.deps.audit.record({ actionId, leagueId: action.leagueId, type: \"executed\", actor, summary: `${action.kind} executed: ${result.message}`, detail: result, }); await this.deps.pending.remove(actionId); return action; } catch (err) { await this.deps.audit.record({ actionId, leagueId: action.leagueId, type: \"failed\", actor, summary: `${action.kind} failed: ${(err as Error).message}`, detail: { error: (err as Error).message }, }); throw err; } } listPending(leagueId?: string): Promise<ProposedAction[]> { return this.deps.pending.list(leagueId); } private dispatch(adapter: WriteableLeagueAdapter, action: ProposedAction): Promise<WriteResult> { switch (action.kind) { case \"trade\": return adapter.executeTrade(action.payload as TradePayload); case \"waiver_claim\": return adapter.executeWaiverClaim(action.payload as WaiverClaimPayload); case \"add_drop\": return adapter.executeAddDrop(action.payload as AddDropPayload); } } private async ruleContext( adapter: WriteableLeagueAdapter, kind: ActionKind, payload: WritePayload, ): Promise<RuleContext> { const ids = this.playersInvolved(kind, payload); const refs = ids.length ? await adapter.resolvePlayers(ids) : []; return { names: new Map(refs.map((r) => [r.playerId, r.name])), value: this.deps.value }; } private playersInvolved(kind: ActionKind, payload: WritePayload): string[] { if (kind === \"trade\") { const t = payload as TradePayload; return [...t.sendPlayerIds, ...t.receivePlayerIds]; } const p = payload as WaiverClaimPayload | AddDropPayload; return [p.addPlayerId, p.dropPlayerId].filter((id): id is string => Boolean(id)); } }",
+          "signature": "export_statement:export class ActionPipeline { constructor(private readonly deps: PipelineDeps) {} async propose(leagueId: string, kind: ActionKind, payload: WritePayload): Promise<ProposedAction> { const adapter = this.deps.adapterFor(leagueId); const verdict = await this.deps.rules.evaluate( kind, payload, await this.ruleContext(leagueId, adapter, kind, payload), ); const action: ProposedAction = { id: randomUUID(), leagueId, kind, payload, status: verdict.decision === \"block\" ? \"rejected\" : \"pending\", verdict, createdMs: Date.now(), }; if (verdict.decision === \"block\") { await this.deps.audit.record({ actionId: action.id, leagueId, type: \"rejected\", actor: \"rule\", summary: `${kind} blocked: ${verdict.blockedReasons.join(\"; \")}`, detail: verdict, }); return action; // not stored; caller sees the block reasons } await this.deps.audit.record({ actionId: action.id, leagueId, type: \"proposed\", actor: \"user\", summary: `${kind} proposed` + (verdict.warnings.length ? ` (warnings: ${verdict.warnings.join(\"; \")})` : \"\"), detail: action, }); await this.deps.pending.put(action); // Auto mode: it passed every block rule, so execute now (still audited). if (this.deps.rules.mode === \"auto\") { return this.execute(action.id, \"auto\"); } return action; } async execute(actionId: string, actor: \"user\" | \"auto\" = \"user\"): Promise<ProposedAction> { const action = await this.deps.pending.get(actionId); if (!action || action.status !== \"pending\") { throw new Error(`no pending action with id ${actionId}`); } const adapter = this.deps.adapterFor(action.leagueId); // Re-validate at execution time — rules or rosters may have changed. const verdict = await this.deps.rules.evaluate( action.kind, action.payload, await this.ruleContext(action.leagueId, adapter, action.kind, action.payload), ); if (verdict.decision === \"block\") { action.status = \"rejected\"; action.verdict = verdict; await this.deps.audit.record({ actionId, leagueId: action.leagueId, type: \"rejected\", actor: \"rule\", summary: `${action.kind} blocked at execution: ${verdict.blockedReasons.join(\"; \")}`, detail: verdict, }); await this.deps.pending.remove(actionId); throw new Error(`action ${actionId} is now blocked: ${verdict.blockedReasons.join(\"; \")}`); } try { const result = await this.dispatch(adapter, action); action.status = \"executed\"; action.result = { platformRef: result.platformRef, message: result.message }; await this.deps.audit.record({ actionId, leagueId: action.leagueId, type: \"executed\", actor, summary: `${action.kind} executed: ${result.message}`, detail: result, }); await this.deps.pending.remove(actionId); return action; } catch (err) { await this.deps.audit.record({ actionId, leagueId: action.leagueId, type: \"failed\", actor, summary: `${action.kind} failed: ${(err as Error).message}`, detail: { error: (err as Error).message }, }); throw err; } } listPending(leagueId?: string): Promise<ProposedAction[]> { return this.deps.pending.list(leagueId); } private dispatch(adapter: WriteableLeagueAdapter, action: ProposedAction): Promise<WriteResult> { switch (action.kind) { case \"trade\": return adapter.executeTrade(action.payload as TradePayload); case \"waiver_claim\": return adapter.executeWaiverClaim(action.payload as WaiverClaimPayload); case \"add_drop\": return adapter.executeAddDrop(action.payload as AddDropPayload); } } private async ruleContext( leagueId: string, adapter: WriteableLeagueAdapter, kind: ActionKind, payload: WritePayload, ): Promise<RuleContext> { const ids = this.playersInvolved(kind, payload); const refs = ids.length ? await adapter.resolvePlayers(ids) : []; return { names: new Map(refs.map((r) => [r.playerId, r.name])), value: this.deps.valueFor(leagueId) }; } private playersInvolved(kind: ActionKind, payload: WritePayload): string[] { if (kind === \"trade\") { const t = payload as TradePayload; return [...t.sendPlayerIds, ...t.receivePlayerIds]; } const p = payload as WaiverClaimPayload | AddDropPayload; return [p.addPlayerId, p.dropPlayerId].filter((id): id is string => Boolean(id)); } }",
           "file": "src/actions/pipeline.ts",
-          "line": 31,
-          "end_line": 171
+          "line": 32,
+          "end_line": 173
         },
         {
           "name": "PendingStore",
@@ -48,10 +48,10 @@
         {
           "name": "PipelineDeps",
           "kind": "interface",
-          "signature": "export_statement:export interface PipelineDeps { rules: RulesEngine; audit: AuditLog; pending: PendingStore; value: ValueProvider; adapterFor(leagueId: string): WriteableLeagueAdapter; }",
+          "signature": "export_statement:export interface PipelineDeps { rules: RulesEngine; audit: AuditLog; pending: PendingStore; /** The value provider for a league (its dynasty/redraft mode is per-league). */ valueFor(leagueId: string): ValueProvider; adapterFor(leagueId: string): WriteableLeagueAdapter; }",
           "file": "src/actions/pipeline.ts",
           "line": 16,
-          "end_line": 22
+          "end_line": 23
         },
         {
           "name": "ProposedAction",
@@ -310,8 +310,8 @@
           "kind": "class",
           "signature": "export_statement:export class SleeperClient implements SleeperApi { private playersCache: Record<string, SleeperPlayer> | null = null; private playersCacheAt = 0; /** Sleeper asks for at most one players fetch per day. */ private static readonly PLAYERS_TTL_MS = 24 * 60 * 60 * 1000; private async get<T>(path: string): Promise<T> { const res = await fetch(`${BASE}${path}`); if (!res.ok) { throw new Error(`Sleeper API ${path} failed: ${res.status} ${res.statusText}`); } return (await res.json()) as T; } getLeague(leagueId: string) { return this.get<Record<string, unknown>>(`/league/${leagueId}`); } getRosters(leagueId: string) { return this.get<Record<string, unknown>[]>(`/league/${leagueId}/rosters`); } /** League members, used to map owner_id -> display name. */ getUsers(leagueId: string) { return this.get<Record<string, unknown>[]>(`/league/${leagueId}/users`); } getMatchups(leagueId: string, week: number) { return this.get<Record<string, unknown>[]>(`/league/${leagueId}/matchups/${week}`); } getTransactions(leagueId: string, week: number) { return this.get<Record<string, unknown>[]>(`/league/${leagueId}/transactions/${week}`); } getTrending(type: \"add\" | \"drop\", limit: number) { return this.get<{ player_id: string; count: number }[]>( `/players/nfl/trending/${type}?limit=${limit}`, ); } getNflState() { return this.get<SleeperNflState>(`/state/nfl`); } /** Public user record; used to resolve a username to a user_id in later phases. */ getUserByName(username: string) { return this.get<Record<string, unknown> | null>(`/user/${username}`); } /** * The full NFL players map, memoized for the process (24h TTL). Keyed by * player_id. This is the source of truth for turning the player_id strings * that appear on rosters/matchups into human-readable names. */ async getPlayers(): Promise<Record<string, SleeperPlayer>> { const fresh = this.playersCache && Date.now() - this.playersCacheAt < SleeperClient.PLAYERS_TTL_MS; if (fresh) return this.playersCache!; this.playersCache = await this.get<Record<string, SleeperPlayer>>(`/players/nfl`); this.playersCacheAt = Date.now(); return this.playersCache; } // --- drafts (public reads; mock and real drafts share these endpoints) ----- getDraftsForLeague(leagueId: string) { return this.get<Record<string, unknown>[]>(`/league/${leagueId}/drafts`); } getDraft(draftId: string) { return this.get<Record<string, unknown>>(`/draft/${draftId}`); } getDraftPicks(draftId: string) { return this.get<Record<string, unknown>[]>(`/draft/${draftId}/picks`); } }",
           "file": "src/adapters/sleeper/sleeperClient.ts",
-          "line": 53,
-          "end_line": 129
+          "line": 57,
+          "end_line": 133
         },
         {
           "name": "SleeperWriteClient",
@@ -358,24 +358,24 @@
           "kind": "interface",
           "signature": "export_statement:export interface SleeperApi { getLeague(leagueId: string): Promise<Record<string, unknown>>; getRosters(leagueId: string): Promise<Record<string, unknown>[]>; getUsers(leagueId: string): Promise<Record<string, unknown>[]>; getMatchups(leagueId: string, week: number): Promise<Record<string, unknown>[]>; getTransactions(leagueId: string, week: number): Promise<Record<string, unknown>[]>; getTrending(type: \"add\" | \"drop\", limit: number): Promise<{ player_id: string; count: number }[]>; getNflState(): Promise<SleeperNflState>; getUserByName(username: string): Promise<Record<string, unknown> | null>; getPlayers(): Promise<Record<string, SleeperPlayer>>; getDraftsForLeague(leagueId: string): Promise<Record<string, unknown>[]>; getDraft(draftId: string): Promise<Record<string, unknown>>; getDraftPicks(draftId: string): Promise<Record<string, unknown>[]>; }",
           "file": "src/adapters/sleeper/sleeperClient.ts",
-          "line": 38,
-          "end_line": 51
+          "line": 42,
+          "end_line": 55
         },
         {
           "name": "SleeperNflState",
           "kind": "interface",
           "signature": "export_statement:export interface SleeperNflState { week: number; season: string; season_type: string; leg: number; }",
           "file": "src/adapters/sleeper/sleeperClient.ts",
-          "line": 26,
-          "end_line": 31
+          "line": 30,
+          "end_line": 35
         },
         {
           "name": "SleeperPlayer",
           "kind": "interface",
-          "signature": "export_statement:export interface SleeperPlayer { player_id: string; full_name?: string; first_name?: string; last_name?: string; position?: string | null; team?: string | null; status?: string | null; }",
+          "signature": "export_statement:export interface SleeperPlayer { player_id: string; full_name?: string; first_name?: string; last_name?: string; position?: string | null; team?: string | null; status?: string | null; /** Sleeper's overall season-long rank (lower = better; ~9999999 = unranked). */ search_rank?: number | null; /** Years of NFL experience; 0 = rookie. */ years_exp?: number | null; }",
           "file": "src/adapters/sleeper/sleeperClient.ts",
           "line": 16,
-          "end_line": 24
+          "end_line": 28
         },
         {
           "name": "FetchFn",
@@ -735,40 +735,40 @@
           "kind": "variable",
           "signature": "export_statement:export const configSchema = z .object({ leagues: z.array(leagueEntrySchema).min(1, \"at least one league must be configured\"), }) .superRefine((cfg, ctx) => { const seen = new Set<string>(); for (const [i, league] of cfg.leagues.entries()) { if (seen.has(league.id)) { ctx.addIssue({ code: z.ZodIssueCode.custom, message: `duplicate league id \"${league.id}\" — ids must be unique`, path: [\"leagues\", i, \"id\"], }); } seen.add(league.id); } });",
           "file": "src/config/schema.ts",
-          "line": 61,
-          "end_line": 77
+          "line": 68,
+          "end_line": 84
         },
         {
-          "name": "export const leagueEntrySchema = z\n  .object({\n    id: z.string().min(1, \"league id (your own label) is required\"),\n    platform: z.enum([\"sleeper\", \"espn\"]),\n    sleeper: sleeperConfig.optional(),\n    espn: espnConfig.optional(),\n  })\n  .superRefine((entry, ctx) => {\n    if (entry.platform === \"sleeper\" && !entry.sleeper) {\n      ctx.addIssue({\n        code: z.ZodIssueCode.custom,\n        message: `league \"${entry.id}\" has platform \"sleeper\" but no \"sleeper\" config block`,\n        path: [\"sleeper\"],\n      });\n    }\n    if (entry.platform === \"espn\" && !entry.espn) {\n      ctx.addIssue({\n        code: z.ZodIssueCode.custom,\n        message: `league \"${entry.id}\" has platform \"espn\" but no \"espn\" config block`,\n        path: [\"espn\"],\n      });\n    }\n  });",
+          "name": "export const leagueEntrySchema = z\n  .object({\n    id: z.string().min(1, \"league id (your own label) is required\"),\n    platform: z.enum([\"sleeper\", \"espn\"]),\n    sleeper: sleeperConfig.optional(),\n    espn: espnConfig.optional(),\n    /**\n     * How to value players for this league: \"redraft\" (Sleeper season-long\n     * ranks — the default; covers kickers, doesn't inflate rookies) or\n     * \"dynasty\" (KeepTradeCut long-term values). Affects draft recommendations\n     * and trade-fairness warnings.\n     */\n    valueMode: z.enum([\"redraft\", \"dynasty\"]).default(\"redraft\"),\n  })\n  .superRefine((entry, ctx) => {\n    if (entry.platform === \"sleeper\" && !entry.sleeper) {\n      ctx.addIssue({\n        code: z.ZodIssueCode.custom,\n        message: `league \"${entry.id}\" has platform \"sleeper\" but no \"sleeper\" config block`,\n        path: [\"sleeper\"],\n      });\n    }\n    if (entry.platform === \"espn\" && !entry.espn) {\n      ctx.addIssue({\n        code: z.ZodIssueCode.custom,\n        message: `league \"${entry.id}\" has platform \"espn\" but no \"espn\" config block`,\n        path: [\"espn\"],\n      });\n    }\n  });",
           "kind": "variable",
-          "signature": "export_statement:export const leagueEntrySchema = z .object({ id: z.string().min(1, \"league id (your own label) is required\"), platform: z.enum([\"sleeper\", \"espn\"]), sleeper: sleeperConfig.optional(), espn: espnConfig.optional(), }) .superRefine((entry, ctx) => { if (entry.platform === \"sleeper\" && !entry.sleeper) { ctx.addIssue({ code: z.ZodIssueCode.custom, message: `league \"${entry.id}\" has platform \"sleeper\" but no \"sleeper\" config block`, path: [\"sleeper\"], }); } if (entry.platform === \"espn\" && !entry.espn) { ctx.addIssue({ code: z.ZodIssueCode.custom, message: `league \"${entry.id}\" has platform \"espn\" but no \"espn\" config block`, path: [\"espn\"], }); } });",
+          "signature": "export_statement:export const leagueEntrySchema = z .object({ id: z.string().min(1, \"league id (your own label) is required\"), platform: z.enum([\"sleeper\", \"espn\"]), sleeper: sleeperConfig.optional(), espn: espnConfig.optional(), /** * How to value players for this league: \"redraft\" (Sleeper season-long * ranks — the default; covers kickers, doesn't inflate rookies) or * \"dynasty\" (KeepTradeCut long-term values). Affects draft recommendations * and trade-fairness warnings. */ valueMode: z.enum([\"redraft\", \"dynasty\"]).default(\"redraft\"), }) .superRefine((entry, ctx) => { if (entry.platform === \"sleeper\" && !entry.sleeper) { ctx.addIssue({ code: z.ZodIssueCode.custom, message: `league \"${entry.id}\" has platform \"sleeper\" but no \"sleeper\" config block`, path: [\"sleeper\"], }); } if (entry.platform === \"espn\" && !entry.espn) { ctx.addIssue({ code: z.ZodIssueCode.custom, message: `league \"${entry.id}\" has platform \"espn\" but no \"espn\" config block`, path: [\"espn\"], }); } });",
           "file": "src/config/schema.ts",
           "line": 37,
-          "end_line": 59
+          "end_line": 66
         },
         {
           "name": "resolveEnvRef",
           "kind": "function",
           "signature": "export_statement:export function resolveEnvRef(value: string): string { if (!value.startsWith(\"env:\")) return value; const varName = value.slice(\"env:\".length); const resolved = process.env[varName]; if (resolved === undefined || resolved === \"\") { throw new Error( `config references \"${value}\" but environment variable ${varName} is not set`, ); } return resolved; }",
           "file": "src/config/schema.ts",
-          "line": 87,
-          "end_line": 97
+          "line": 94,
+          "end_line": 104
         },
         {
           "name": "LeagueEntry",
           "kind": "type",
           "signature": "export_statement:export type LeagueEntry = z.infer<typeof leagueEntrySchema>;",
           "file": "src/config/schema.ts",
-          "line": 79,
-          "end_line": 79
+          "line": 86,
+          "end_line": 86
         },
         {
           "name": "SleepBotConfig",
           "kind": "type",
           "signature": "export_statement:export type SleepBotConfig = z.infer<typeof configSchema>;",
           "file": "src/config/schema.ts",
-          "line": 80,
-          "end_line": 80
+          "line": 87,
+          "end_line": 87
         }
       ]
     },
@@ -790,18 +790,18 @@
         {
           "name": "buildAppContext",
           "kind": "function",
-          "signature": "export_statement:export async function buildAppContext(config: ConfigRegistry): Promise<AppContext> { const store = new JsonFileStore(); const audit = new AuditLog(store); const pending = new PendingStore(store); const rules = new RulesEngine(await loadRulesConfig()); // One shared Sleeper client so the ~5MB players dump is cached across the // adapters and the KTC value bridge. const sleeperClient = new SleeperClient(); const value = await buildValueProvider(sleeperClient); const adapters = new Map<string, WriteableLeagueAdapter>(); const adapterFor = (leagueId: string): WriteableLeagueAdapter => { let adapter = adapters.get(leagueId); if (!adapter) { adapter = buildAdapter(config.get(leagueId), sleeperClient); adapters.set(leagueId, adapter); } return adapter; }; const pipeline = new ActionPipeline({ rules, audit, pending, value, adapterFor }); const draft = new DraftAssistant({ adapterFor, value }); return { config, adapterFor, pipeline, audit, draft }; }",
+          "signature": "export_statement:export async function buildAppContext(config: ConfigRegistry): Promise<AppContext> { const store = new JsonFileStore(); const audit = new AuditLog(store); const pending = new PendingStore(store); const rules = new RulesEngine(await loadRulesConfig()); // One shared Sleeper client so the ~5MB players dump is cached across the // adapters and both value bridges. const sleeperClient = new SleeperClient(); const redraftValue = buildRedraftValue(sleeperClient); const dynastyValue = await buildDynastyValue(sleeperClient); // Per-league selection: a league's config `valueMode` decides which to use. const valueFor = (leagueId: string): ValueProvider => config.get(leagueId).valueMode === \"dynasty\" ? dynastyValue : redraftValue; const adapters = new Map<string, WriteableLeagueAdapter>(); const adapterFor = (leagueId: string): WriteableLeagueAdapter => { let adapter = adapters.get(leagueId); if (!adapter) { adapter = buildAdapter(config.get(leagueId), sleeperClient); adapters.set(leagueId, adapter); } return adapter; }; const pipeline = new ActionPipeline({ rules, audit, pending, valueFor, adapterFor }); const draft = new DraftAssistant({ adapterFor, valueFor }); return { config, adapterFor, valueFor, pipeline, audit, draft }; }",
           "file": "src/core/context.ts",
-          "line": 40,
-          "end_line": 64
+          "line": 44,
+          "end_line": 72
         },
         {
           "name": "SleepBotOperations",
           "kind": "class",
-          "signature": "export_statement:export class SleepBotOperations { constructor(private readonly ctx: AppContext) {} // --- reads --------------------------------------------------------------- listLeagues() { return this.ctx.config.list().map((l) => ({ id: l.id, platform: l.platform, sleeperLeagueId: l.sleeper?.leagueId, espnLeagueId: l.espn?.leagueId, })); } getLeagueInfo(leagueId: string) { return this.ctx.adapterFor(leagueId).getLeagueInfo(); } getRosters(leagueId: string) { return this.ctx.adapterFor(leagueId).getRosters(); } getMyRoster(leagueId: string) { return this.ctx.adapterFor(leagueId).getMyRoster(); } getStandings(leagueId: string) { return this.ctx.adapterFor(leagueId).getStandings(); } getMatchups(leagueId: string, week?: number) { return this.ctx.adapterFor(leagueId).getMatchups(week); } getTransactions(leagueId: string, week?: number) { return this.ctx.adapterFor(leagueId).getTransactions(week); } searchPlayers(leagueId: string, query: string, filters?: PlayerSearchFilters) { return this.ctx.adapterFor(leagueId).searchPlayers(query, filters); } getTrendingPlayers(leagueId: string, type: \"add\" | \"drop\", limit?: number) { return this.ctx.adapterFor(leagueId).getTrendingPlayers(type, limit); } getAuthStatus(leagueId: string) { return this.ctx.adapterFor(leagueId).writeAuthStatus(); } getAuditLog(leagueId?: string) { return this.ctx.audit.list(leagueId); } // --- drafts (read-only assistant) ---------------------------------------- listDrafts(leagueId: string) { return this.ctx.draft.listDrafts(leagueId); } getDraftPicks(leagueId: string, draftId: string) { return this.ctx.draft.getPicks(leagueId, draftId); } getDraftBoard(leagueId: string, draftId: string, yourRosterId?: number) { return this.ctx.draft.getBoard(leagueId, draftId, { yourRosterId }); } getDraftRecommendations( leagueId: string, draftId: string, opts: { rosterId?: number; position?: string; limit?: number } = {}, ) { return this.ctx.draft.recommend(leagueId, draftId, opts); } // --- writes (confirm-by-default via the pipeline) ------------------------ proposeTrade(leagueId: string, payload: TradePayload) { return this.ctx.pipeline.propose(leagueId, \"trade\", payload); } proposeWaiverClaim(leagueId: string, payload: WaiverClaimPayload) { return this.ctx.pipeline.propose(leagueId, \"waiver_claim\", payload); } proposeAddDrop(leagueId: string, payload: AddDropPayload) { return this.ctx.pipeline.propose(leagueId, \"add_drop\", payload); } executeAction(actionId: string) { return this.ctx.pipeline.execute(actionId, \"user\"); } listPendingActions(leagueId?: string) { return this.ctx.pipeline.listPending(leagueId); } }",
+          "signature": "export_statement:export class SleepBotOperations { constructor(private readonly ctx: AppContext) {} // --- reads --------------------------------------------------------------- listLeagues() { return this.ctx.config.list().map((l) => ({ id: l.id, platform: l.platform, sleeperLeagueId: l.sleeper?.leagueId, espnLeagueId: l.espn?.leagueId, })); } getLeagueInfo(leagueId: string) { return this.ctx.adapterFor(leagueId).getLeagueInfo(); } getRosters(leagueId: string) { return this.ctx.adapterFor(leagueId).getRosters(); } getMyRoster(leagueId: string) { return this.ctx.adapterFor(leagueId).getMyRoster(); } getStandings(leagueId: string) { return this.ctx.adapterFor(leagueId).getStandings(); } getMatchups(leagueId: string, week?: number) { return this.ctx.adapterFor(leagueId).getMatchups(week); } getTransactions(leagueId: string, week?: number) { return this.ctx.adapterFor(leagueId).getTransactions(week); } searchPlayers(leagueId: string, query: string, filters?: PlayerSearchFilters) { return this.ctx.adapterFor(leagueId).searchPlayers(query, filters); } getTrendingPlayers(leagueId: string, type: \"add\" | \"drop\", limit?: number) { return this.ctx.adapterFor(leagueId).getTrendingPlayers(type, limit); } getAuthStatus(leagueId: string) { return this.ctx.adapterFor(leagueId).writeAuthStatus(); } getAuditLog(leagueId?: string) { return this.ctx.audit.list(leagueId); } // --- drafts (read-only assistant) ---------------------------------------- listDrafts(leagueId: string) { return this.ctx.draft.listDrafts(leagueId); } getDraftPicks(leagueId: string, draftId: string) { return this.ctx.draft.getPicks(leagueId, draftId); } getDraftBoard(leagueId: string, draftId: string, yourRosterId?: number) { return this.ctx.draft.getBoard(leagueId, draftId, { yourRosterId }); } getDraftRecommendations( leagueId: string, draftId: string, opts: { rosterId?: number; position?: string; limit?: number } = {}, ) { return this.ctx.draft.recommend(leagueId, draftId, opts); } /** Best available at every position (keeps K/DEF visible). */ getDraftBestByPosition( leagueId: string, draftId: string, opts: { rosterId?: number; perPosition?: number } = {}, ) { return this.ctx.draft.bestByPosition(leagueId, draftId, opts); } // --- writes (confirm-by-default via the pipeline) ------------------------ proposeTrade(leagueId: string, payload: TradePayload) { return this.ctx.pipeline.propose(leagueId, \"trade\", payload); } proposeWaiverClaim(leagueId: string, payload: WaiverClaimPayload) { return this.ctx.pipeline.propose(leagueId, \"waiver_claim\", payload); } proposeAddDrop(leagueId: string, payload: AddDropPayload) { return this.ctx.pipeline.propose(leagueId, \"add_drop\", payload); } executeAction(actionId: string) { return this.ctx.pipeline.execute(actionId, \"user\"); } listPendingActions(leagueId?: string) { return this.ctx.pipeline.listPending(leagueId); } }",
           "file": "src/core/operations.ts",
           "line": 40,
-          "end_line": 121
+          "end_line": 129
         },
         {
           "name": "proposalOutcome",
@@ -814,10 +814,10 @@
         {
           "name": "AppContext",
           "kind": "interface",
-          "signature": "export_statement:export interface AppContext { config: ConfigRegistry; /** The write-capable adapter for a league (also serves reads), cached per league. */ adapterFor(leagueId: string): WriteableLeagueAdapter; pipeline: ActionPipeline; audit: AuditLog; draft: DraftAssistant; }",
+          "signature": "export_statement:export interface AppContext { config: ConfigRegistry; /** The write-capable adapter for a league (also serves reads), cached per league. */ adapterFor(leagueId: string): WriteableLeagueAdapter; /** Player value for a league, per its configured mode (redraft vs dynasty). */ valueFor(leagueId: string): ValueProvider; pipeline: ActionPipeline; audit: AuditLog; draft: DraftAssistant; }",
           "file": "src/core/context.ts",
-          "line": 26,
-          "end_line": 33
+          "line": 28,
+          "end_line": 37
         },
         {
           "name": "export { SleepBotOperations, proposalOutcome } from \"./operations.js\";",
@@ -856,10 +856,10 @@
         {
           "name": "DraftAssistant",
           "kind": "class",
-          "signature": "export_statement:export class DraftAssistant { constructor(private readonly deps: DraftDeps) {} listDrafts(leagueId: string): Promise<Draft[]> { return this.deps.adapterFor(leagueId).listDrafts(); } getDraft(leagueId: string, draftId: string): Promise<Draft> { return this.deps.adapterFor(leagueId).getDraft(draftId); } getPicks(leagueId: string, draftId: string): Promise<DraftPick[]> { return this.deps.adapterFor(leagueId).getDraftPicks(draftId); } async getBoard( leagueId: string, draftId: string, opts: { yourRosterId?: number } = {}, ): Promise<DraftBoard> { const adapter = this.deps.adapterFor(leagueId); const [draft, picks] = await Promise.all([adapter.getDraft(draftId), adapter.getDraftPicks(draftId)]); const pickCount = picks.length; return { draft, pickCount, onTheClock: draft.status === \"complete\" ? null : this.onTheClock(draft, pickCount), recentPicks: picks.slice(-8).reverse(), yourNextPickNo: opts.yourRosterId != null ? this.nextPickForRoster(draft, pickCount, opts.yourRosterId) : null, }; } async recommend( leagueId: string, draftId: string, opts: { rosterId?: number; position?: string; limit?: number } = {}, ): Promise<DraftRecommendation[]> { const adapter = this.deps.adapterFor(leagueId); const [draft, picks, pool] = await Promise.all([ adapter.getDraft(draftId), adapter.getDraftPicks(draftId), adapter.getDraftablePlayers(), ]); const taken = new Set(picks.map((p) => p.playerId)); const position = opts.position?.toUpperCase(); const available = pool.filter((p) => !taken.has(p.playerId) && (!position || p.position === position)); const values = await this.deps.value.getValues(available.map((p) => p.playerId)); const ranked = available .map((p) => ({ p, v: values.get(p.playerId) ?? 0 })) .sort((a, b) => b.v - a.v); const needs = opts.rosterId != null ? this.rosterNeeds(draft, picks, opts.rosterId) : null; return ranked.slice(0, opts.limit ?? 10).map(({ p, v }) => this.toRec(p, v, needs)); } // --- internals ----------------------------------------------------------- private onTheClock(draft: Draft, pickCount: number): OnTheClock | null { if (!draft.teams) return null; const pickNo = pickCount + 1; if (draft.rounds && pickNo > draft.rounds * draft.teams) return null; // draft over const { round, slot } = this.slotForPick(draft, pickNo); return { pickNo, round, slot, rosterId: draft.slotToRosterId[String(slot)] ?? null }; } /** Overall pick number -> {round, draft slot}, honoring snake reversal. */ private slotForPick(draft: Draft, pickNo: number): { round: number; slot: number } { const teams = draft.teams; const round = Math.floor((pickNo - 1) / teams) + 1; const idxInRound = (pickNo - 1) % teams; // 0-based const reversed = draft.type === \"snake\" && round % 2 === 0; return { round, slot: reversed ? teams - idxInRound : idxInRound + 1 }; } private nextPickForRoster(draft: Draft, pickCount: number, rosterId: number): number | null { if (!draft.teams || !draft.rounds) return null; const slotEntry = Object.entries(draft.slotToRosterId).find(([, rid]) => rid === rosterId); if (!slotEntry) return null; const mySlot = Number(slotEntry[0]); for (let pickNo = pickCount + 1; pickNo <= draft.rounds * draft.teams; pickNo++) { if (this.slotForPick(draft, pickNo).slot === mySlot) return pickNo; } return null; } /** Positions where the roster is short of its starter slots. */ private rosterNeeds(draft: Draft, picks: DraftPick[], rosterId: number): Record<string, number> { const drafted: Record<string, number> = {}; for (const p of picks) { if (p.rosterId === rosterId && p.position) drafted[p.position] = (drafted[p.position] ?? 0) + 1; } const needs: Record<string, number> = {}; for (const [pos, slots] of Object.entries(draft.starterSlots)) { if (pos === \"FLEX\" || pos === \"SUPER_FLEX\") continue; // flex is fillable by many positions const need = slots - (drafted[pos] ?? 0); if (need > 0) needs[pos] = need; } return needs; } private toRec(p: Player, value: number, needs: Record<string, number> | null): DraftRecommendation { const parts = [`value ${value}`]; if (needs && needs[p.position]) parts.push(`fills a ${p.position} need`); return { playerId: p.playerId, name: p.fullName, position: p.position, team: p.team, value, reason: parts.join(\" · \") }; } }",
+          "signature": "export_statement:export class DraftAssistant { constructor(private readonly deps: DraftDeps) {} listDrafts(leagueId: string): Promise<Draft[]> { return this.deps.adapterFor(leagueId).listDrafts(); } getDraft(leagueId: string, draftId: string): Promise<Draft> { return this.deps.adapterFor(leagueId).getDraft(draftId); } getPicks(leagueId: string, draftId: string): Promise<DraftPick[]> { return this.deps.adapterFor(leagueId).getDraftPicks(draftId); } async getBoard( leagueId: string, draftId: string, opts: { yourRosterId?: number } = {}, ): Promise<DraftBoard> { const adapter = this.deps.adapterFor(leagueId); const [draft, picks] = await Promise.all([adapter.getDraft(draftId), adapter.getDraftPicks(draftId)]); const pickCount = picks.length; return { draft, pickCount, onTheClock: draft.status === \"complete\" ? null : this.onTheClock(draft, pickCount), recentPicks: picks.slice(-8).reverse(), yourNextPickNo: opts.yourRosterId != null ? this.nextPickForRoster(draft, pickCount, opts.yourRosterId) : null, }; } async recommend( leagueId: string, draftId: string, opts: { rosterId?: number; position?: string; limit?: number } = {}, ): Promise<DraftRecommendation[]> { const { scored } = await this.scoreAvailable(leagueId, draftId, opts.rosterId); const position = opts.position?.toUpperCase(); return scored .filter((s) => !position || s.p.position === position) .sort((a, b) => b.score - a.score) .slice(0, opts.limit ?? 10) .map((s) => this.toRec(s.p, s.value, s.vorp, s.needed)); } /** Best available at each position (one pass) — used to keep K/DEF visible in chat context. */ async bestByPosition( leagueId: string, draftId: string, opts: { rosterId?: number; perPosition?: number } = {}, ): Promise<Record<string, DraftRecommendation[]>> { const { scored } = await this.scoreAvailable(leagueId, draftId, opts.rosterId); const perPosition = opts.perPosition ?? 3; const out: Record<string, ScoredPlayer[]> = {}; for (const s of scored) (out[s.p.position] ??= []).push(s); const result: Record<string, DraftRecommendation[]> = {}; for (const [pos, list] of Object.entries(out)) { result[pos] = list .sort((a, b) => b.score - a.score) .slice(0, perPosition) .map((s) => this.toRec(s.p, s.value, s.vorp, s.needed)); } return result; } /** Score every available player by value-over-replacement + roster-need boost. */ private async scoreAvailable( leagueId: string, draftId: string, rosterId?: number, ): Promise<{ draft: Draft; scored: ScoredPlayer[] }> { const adapter = this.deps.adapterFor(leagueId); const [draft, picks, pool] = await Promise.all([ adapter.getDraft(draftId), adapter.getDraftPicks(draftId), adapter.getDraftablePlayers(), ]); const taken = new Set(picks.map((p) => p.playerId)); const available = pool.filter((p) => !taken.has(p.playerId)); const values = await this.deps.valueFor(leagueId).getValues(available.map((p) => p.playerId)); const replacement = this.replacementByPosition(draft, available, values); const needs = rosterId != null ? this.rosterNeeds(draft, picks, rosterId) : null; const scored = available.map((p) => { const value = values.get(p.playerId) ?? 0; const vorp = value - (replacement[p.position] ?? 0); const needBoost = needs && needs[p.position] ? NEED_BONUS * needs[p.position] : 0; return { p, value, vorp, score: vorp + needBoost, needed: !!(needs && needs[p.position]) }; }); return { draft, scored }; } // --- internals ----------------------------------------------------------- private onTheClock(draft: Draft, pickCount: number): OnTheClock | null { if (!draft.teams) return null; const pickNo = pickCount + 1; if (draft.rounds && pickNo > draft.rounds * draft.teams) return null; // draft over const { round, slot } = this.slotForPick(draft, pickNo); return { pickNo, round, slot, rosterId: draft.slotToRosterId[String(slot)] ?? null }; } /** Overall pick number -> {round, draft slot}, honoring snake reversal. */ private slotForPick(draft: Draft, pickNo: number): { round: number; slot: number } { const teams = draft.teams; const round = Math.floor((pickNo - 1) / teams) + 1; const idxInRound = (pickNo - 1) % teams; // 0-based const reversed = draft.type === \"snake\" && round % 2 === 0; return { round, slot: reversed ? teams - idxInRound : idxInRound + 1 }; } private nextPickForRoster(draft: Draft, pickCount: number, rosterId: number): number | null { if (!draft.teams || !draft.rounds) return null; const slotEntry = Object.entries(draft.slotToRosterId).find(([, rid]) => rid === rosterId); if (!slotEntry) return null; const mySlot = Number(slotEntry[0]); for (let pickNo = pickCount + 1; pickNo <= draft.rounds * draft.teams; pickNo++) { if (this.slotForPick(draft, pickNo).slot === mySlot) return pickNo; } return null; } /** Positions where the roster is short of its starter slots. */ private rosterNeeds(draft: Draft, picks: DraftPick[], rosterId: number): Record<string, number> { const drafted: Record<string, number> = {}; for (const p of picks) { if (p.rosterId === rosterId && p.position) drafted[p.position] = (drafted[p.position] ?? 0) + 1; } const needs: Record<string, number> = {}; for (const [pos, slots] of Object.entries(draft.starterSlots)) { if (pos === \"FLEX\" || pos === \"SUPER_FLEX\") continue; // flex is fillable by many positions const need = slots - (drafted[pos] ?? 0); if (need > 0) needs[pos] = need; } return needs; } /** * Replacement value per position = the value of the last \"startable\" player at * that position across the league (teams × starters/team, flex shared among * RB/WR/TE, superflex added to QB). Value above that is what makes a pick * valuable — the basis for value-over-replacement. */ private replacementByPosition( draft: Draft, available: Player[], values: Map<string, number>, ): Record<string, number> { const slots = draft.starterSlots; const flexShare = (slots.FLEX ?? 0) / 3; // RB/WR/TE split the flex const startersPerTeam: Record<string, number> = { QB: (slots.QB ?? 0) + (slots.SUPER_FLEX ?? 0), RB: (slots.RB ?? 0) + flexShare, WR: (slots.WR ?? 0) + flexShare, TE: (slots.TE ?? 0) + flexShare, K: slots.K ?? 0, DEF: slots.DEF ?? 0, }; const byPos = new Map<string, number[]>(); for (const p of available) { const arr = byPos.get(p.position) ?? []; arr.push(values.get(p.playerId) ?? 0); byPos.set(p.position, arr); } const replacement: Record<string, number> = {}; for (const [pos, vals] of byPos) { vals.sort((a, b) => b - a); const idx = Math.max(1, Math.round((draft.teams || 12) * (startersPerTeam[pos] ?? 0))); replacement[pos] = vals[idx] ?? vals[vals.length - 1] ?? 0; } return replacement; } private toRec(p: Player, value: number, vorp: number, needed: boolean): DraftRecommendation { const parts = [`value ${value}`, `VORP ${Math.round(vorp)}`]; if (needed) parts.push(`fills a ${p.position} need`); return { playerId: p.playerId, name: p.fullName, position: p.position, team: p.team, value, reason: parts.join(\" · \") }; } }",
           "file": "src/draft/draftAssistant.ts",
-          "line": 16,
-          "end_line": 122
+          "line": 29,
+          "end_line": 211
         },
         {
           "name": "DraftBoard",
@@ -872,10 +872,10 @@
         {
           "name": "DraftDeps",
           "kind": "interface",
-          "signature": "export_statement:export interface DraftDeps { adapterFor(leagueId: string): LeagueAdapter; value: ValueProvider; }",
+          "signature": "export_statement:export interface DraftDeps { adapterFor(leagueId: string): LeagueAdapter; /** Value provider for a league (redraft vs dynasty is per-league config). */ valueFor(leagueId: string): ValueProvider; }",
           "file": "src/draft/draftAssistant.ts",
           "line": 5,
-          "end_line": 8
+          "end_line": 9
         },
         {
           "name": "DraftRecommendation",
@@ -1447,6 +1447,8 @@
         "src/value/index.ts",
         "src/value/ktc.test.ts",
         "src/value/ktc.ts",
+        "src/value/sleeperRank.test.ts",
+        "src/value/sleeperRank.ts",
         "src/value/value.test.ts"
       ],
       "contracts": [],
@@ -1474,6 +1476,14 @@
           "file": "src/value/ktc.ts",
           "line": 35,
           "end_line": 84
+        },
+        {
+          "name": "SleeperRankValueProvider",
+          "kind": "class",
+          "signature": "export_statement:export class SleeperRankValueProvider implements ValueProvider { private index: Map<string, number> | null = null; private building: Promise<Map<string, number>> | null = null; constructor( private readonly loadPlayers: () => Promise<RankedPlayer[]>, private readonly opts: { defenseFloor?: number } = {}, ) {} async getValue(playerId: string): Promise<number> { return (await this.ensureIndex()).get(playerId) ?? 0; } async getValues(playerIds: string[]): Promise<Map<string, number>> { const idx = await this.ensureIndex(); return new Map(playerIds.map((id) => [id, idx.get(id) ?? 0])); } private valueForRank(rank: number | null | undefined, position: string): number { if (typeof rank === \"number\" && rank > 0 && rank < UNRANKED) { return Math.round(9999 * Math.exp(-(rank - 1) / DECAY)); } // Unranked: defenses get a small floor so they stay visible/orderable; other // unranked players are genuinely deep and score 0. return position === \"DEF\" ? (this.opts.defenseFloor ?? 300) : 0; } private ensureIndex(): Promise<Map<string, number>> { if (this.index) return Promise.resolve(this.index); this.building ??= this.loadPlayers().then((players) => { const idx = new Map<string, number>(); for (const p of players) idx.set(p.playerId, this.valueForRank(p.searchRank, p.position)); this.index = idx; return idx; }); return this.building; } }",
+          "file": "src/value/sleeperRank.ts",
+          "line": 24,
+          "end_line": 61
         },
         {
           "name": "nameKey",
@@ -1506,6 +1516,14 @@
           "file": "src/value/ktc.ts",
           "line": 29,
           "end_line": 33
+        },
+        {
+          "name": "RankedPlayer",
+          "kind": "interface",
+          "signature": "export_statement:export interface RankedPlayer { playerId: string; position: string; /** Sleeper search_rank; undefined/huge means unranked. */ searchRank?: number | null; }",
+          "file": "src/value/sleeperRank.ts",
+          "line": 13,
+          "end_line": 18
         },
         {
           "name": "ValueProvider",
@@ -1544,8 +1562,16 @@
           "kind": "other",
           "signature": "export_statement:export { KtcValueProvider, loadKtcSnapshot, normalizeName, nameKey, type KtcMode, type KtcPlayer, type PlayerLite, } from \"./ktc.js\";",
           "file": "src/value/index.ts",
+          "line": 4,
+          "end_line": 12
+        },
+        {
+          "name": "export { SleeperRankValueProvider, type RankedPlayer } from \"./sleeperRank.js\";",
+          "kind": "other",
+          "signature": "export_statement:export { SleeperRankValueProvider, type RankedPlayer } from \"./sleeperRank.js\";",
+          "file": "src/value/index.ts",
           "line": 3,
-          "end_line": 11
+          "end_line": 3
         }
       ]
     }
