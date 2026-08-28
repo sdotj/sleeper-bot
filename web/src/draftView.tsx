@@ -36,7 +36,7 @@ export function DraftView({ leagueId }: { leagueId: string }) {
   const polling = !!activeDraft && status !== "complete";
   useEffect(() => {
     if (!polling) return;
-    const t = setInterval(() => setTick((n) => n + 1), 10_000);
+    const t = setInterval(() => setTick((n) => n + 1), 5_000);
     return () => clearInterval(t);
   }, [polling]);
 
@@ -81,7 +81,7 @@ export function DraftView({ leagueId }: { leagueId: string }) {
         <button className="primary" onClick={() => setChatOpen((o) => !o)} disabled={!activeDraft}>
           {chatOpen ? "Close chat" : "Start chat"}
         </button>
-        {polling && <span className="badge ok">live · 10s</span>}
+        {polling && <span className="badge ok">live · 5s</span>}
       </div>
 
       <div className={chatOpen ? "draft-room" : undefined}>
