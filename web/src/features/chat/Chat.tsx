@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import { Button } from "../../components/ui";
 
@@ -29,6 +29,12 @@ export function Chat({
   const [error, setError] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
+  // Keep the newest message (and the typing indicator) in view.
+  useEffect(() => {
+    const el = listRef.current;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, [msgs, busy]);
+
   async function send() {
     const text = input.trim();
     if (!text || busy) return;
@@ -50,7 +56,6 @@ export function Chat({
       setError((e as Error).message);
     } finally {
       setBusy(false);
-      requestAnimationFrame(() => listRef.current?.scrollTo(0, listRef.current.scrollHeight));
     }
   }
 
@@ -73,11 +78,7 @@ export function Chat({
             {m.content}
           </Bubble>
         ))}
-        {busy && (
-          <Bubble role="assistant" muted>
-            thinking…
-          </Bubble>
-        )}
+        {busy && <TypingIndicator />}
         {error && <p className="px-1 text-sm text-danger">⚠ {error}</p>}
       </div>
       <div className="mt-3 flex items-end gap-2">
@@ -98,6 +99,23 @@ export function Chat({
           Send
         </Button>
       </div>
+    </div>
+  );
+}
+
+function TypingIndicator() {
+  return (
+    <div
+      className="flex max-w-[85%] items-center gap-1.5 self-start rounded-2xl rounded-bl-md border border-border bg-surface-2 px-4 py-3.5"
+      aria-label="SleepBot is typing"
+    >
+      {[0, 160, 320].map((delay) => (
+        <span
+          key={delay}
+          className="typing-dot h-1.5 w-1.5 rounded-full bg-muted"
+          style={{ animationDelay: `${delay}ms` }}
+        />
+      ))}
     </div>
   );
 }
