@@ -2,6 +2,26 @@ import pg from "pg";
 import type { Store } from "./store.js";
 
 /**
+ * Drop any `sslmode` query param from a Postgres DSN. We always set TLS via the
+ * explicit `ssl` option below, so the URL's `sslmode` is redundant — and leaving
+ * it in makes pg-connection-string log a deprecation warning (it currently treats
+ * `require`/`prefer`/`verify-ca` as `verify-full`, changing in a future major).
+ * URL-form DSNs (Neon, Supabase, RDS, …) go through the URL parser; the regex is
+ * a best-effort fallback for libpq key=value strings.
+ */
+function withoutSslMode(connectionString: string): string {
+  try {
+    const url = new URL(connectionString);
+    url.searchParams.delete("sslmode");
+    return url.toString();
+  } catch {
+    return connectionString
+      .replace(/([?&])sslmode=[^&]*(&|$)/gi, (_m, sep, tail) => (tail === "&" ? sep : ""))
+      .replace(/[?&]$/, "");
+  }
+}
+
+/**
  * PostgresStore — the durable, concurrent-safe {@link Store} for cloud deploys
  * (dec.action-audit-log). A single key/value table keyed by (collection, id)
  * with a jsonb value; upserts on put. Selected automatically when DATABASE_URL
@@ -17,7 +37,7 @@ export class PostgresStore implements Store {
   ) {
     const local = /@(localhost|127\.0\.0\.1)[:/]/.test(connectionString);
     this.pool = new pg.Pool({
-      connectionString,
+      connectionString: withoutSslMode(connectionString),
       // Managed Postgres (Neon/Supabase/Fly/Render) generally needs TLS with a
       // provider cert; local dev does not. Override with DATABASE_SSL.
       ssl:

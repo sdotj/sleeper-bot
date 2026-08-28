@@ -3,7 +3,7 @@
   "sleepbot.adapters.interface:src/adapters/LeagueAdapter.ts": "3f1b7c58258528ba",
   "sleepbot.adapters.sleeper:src/adapters/sleeper": "b0108a7704c36075",
   "sleepbot.api:src/api": "0ffa7d489677229b",
-  "sleepbot.audit:src/audit": "9529c3a2bf0ee340",
+  "sleepbot.audit:src/audit": "a81de13067f681e9",
   "sleepbot.auth:src/auth": "259a787d6d6f6aca",
   "sleepbot.chat:src/chat": "73145976280fb36e",
   "sleepbot.config:src/config": "d66ea3657e7a230d",
