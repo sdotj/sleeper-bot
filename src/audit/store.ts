@@ -93,3 +93,17 @@ export class InMemoryStore implements Store {
     if (this.data[collection]) delete this.data[collection][id];
   }
 }
+
+/**
+ * Pick the right store for the environment: Postgres when DATABASE_URL is set
+ * (cloud), else the local JSON file. The `pg`-backed store is dynamically
+ * imported so its driver only loads when actually used (dec.action-audit-log).
+ */
+export async function createStore(): Promise<Store> {
+  const url = process.env.DATABASE_URL;
+  if (url) {
+    const { PostgresStore } = await import("./postgresStore.js");
+    return PostgresStore.create(url);
+  }
+  return new JsonFileStore();
+}

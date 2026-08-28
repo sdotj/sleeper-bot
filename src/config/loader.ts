@@ -15,29 +15,38 @@ export class ConfigRegistry {
   }
 
   /**
-   * Read `config/leagues.json` (override with the SLEEPBOT_CONFIG env var) and
-   * validate it against the schema. Throws a readable error on invalid config.
+   * Load the leagues config. In the cloud, set SLEEPBOT_CONFIG_JSON to the config
+   * JSON inline (a secret/env var) — no file needed. Otherwise read
+   * `config/leagues.json` (override the path with SLEEPBOT_CONFIG). Throws a
+   * readable error on invalid config.
    */
   static load(configPath?: string): ConfigRegistry {
-    const path = resolve(
-      configPath ?? process.env.SLEEPBOT_CONFIG ?? "config/leagues.json",
-    );
-
     let raw: string;
-    try {
-      raw = readFileSync(path, "utf8");
-    } catch {
-      throw new Error(
-        `could not read config at ${path}. Copy config/leagues.example.json to ` +
-          `config/leagues.json and fill in your league, or set SLEEPBOT_CONFIG.`,
-      );
+    let source: string;
+
+    const inline = process.env.SLEEPBOT_CONFIG_JSON;
+    if (inline) {
+      raw = inline;
+      source = "SLEEPBOT_CONFIG_JSON";
+    } else {
+      const path = resolve(configPath ?? process.env.SLEEPBOT_CONFIG ?? "config/leagues.json");
+      source = path;
+      try {
+        raw = readFileSync(path, "utf8");
+      } catch {
+        throw new Error(
+          `could not read config at ${path}. Copy config/leagues.example.json to ` +
+            `config/leagues.json and fill in your league, or set SLEEPBOT_CONFIG / ` +
+            `SLEEPBOT_CONFIG_JSON (inline JSON, for cloud).`,
+        );
+      }
     }
 
     let parsed: unknown;
     try {
       parsed = JSON.parse(raw);
     } catch (err) {
-      throw new Error(`config at ${path} is not valid JSON: ${(err as Error).message}`);
+      throw new Error(`config from ${source} is not valid JSON: ${(err as Error).message}`);
     }
 
     const result = configSchema.safeParse(parsed);
@@ -45,7 +54,7 @@ export class ConfigRegistry {
       const issues = result.error.issues
         .map((i) => `  - ${i.path.join(".")}: ${i.message}`)
         .join("\n");
-      throw new Error(`invalid config at ${path}:\n${issues}`);
+      throw new Error(`invalid config from ${source}:\n${issues}`);
     }
 
     return new ConfigRegistry(result.data);

@@ -155,8 +155,12 @@ cd web && npm install && npm run dev  # GUI on :5173 (proxies /api -> :8787)
 Then open http://localhost:5173. Secrets (`SLEEPER_TOKEN`, `ANTHROPIC_API_KEY`)
 live on the server only; the browser never sees them. The Chat panel needs
 `ANTHROPIC_API_KEY` — without it, chat returns a clear message and everything
-else keeps working. In the cloud: run the `api` service, serve the built `web/`
-statically, and point the `Store` at a hosted DB.
+else keeps working.
+
+**Cloud deploy:** one container serves the API + GUI, with Postgres for state
+(set `DATABASE_URL`) and the leagues config as an env secret
+(`SLEEPBOT_CONFIG_JSON`). See [docs/deploy.md](docs/deploy.md) — there's a
+`Dockerfile` and a Fly.io walkthrough.
 
 ## Roadmap
 

@@ -1,4 +1,7 @@
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
+import fastifyStatic from "@fastify/static";
 import { NeedsReauthError } from "../auth/index.js";
 import { SleepBotOperations, proposalOutcome } from "../core/index.js";
 import { ChatUnavailableError, runChatTurn, type ChatMessage, type DraftContextRef } from "../chat/index.js";
@@ -142,6 +145,18 @@ export function buildApiServer(ops: SleepBotOperations): FastifyInstance {
       return fail(reply, err);
     }
   });
+
+  // --- static GUI (single-deployable prod) ---------------------------------
+  // Serve the built web app when present (cloud). In dev, Vite serves it and
+  // this is skipped. Non-API GETs fall back to index.html for the SPA.
+  const staticDir = resolve(process.env.SLEEPBOT_STATIC_DIR ?? "web/dist");
+  if (process.env.SLEEPBOT_SERVE_STATIC !== "false" && existsSync(staticDir)) {
+    app.register(fastifyStatic, { root: staticDir });
+    app.setNotFoundHandler((req, reply) => {
+      if (req.method === "GET" && !req.url.startsWith("/api")) return reply.sendFile("index.html");
+      return reply.status(404).send({ error: "not found" });
+    });
+  }
 
   return app;
 }

@@ -1,4 +1,4 @@
-export { JsonFileStore, InMemoryStore, type Store } from "./store.js";
+export { JsonFileStore, InMemoryStore, createStore, type Store } from "./store.js";
 export {
   AuditLog,
   type AuditEvent,

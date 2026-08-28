@@ -2,7 +2,7 @@ import type { WriteableLeagueAdapter } from "../adapters/LeagueAdapter.js";
 import { SleeperAdapter } from "../adapters/sleeper/SleeperAdapter.js";
 import { SleeperClient } from "../adapters/sleeper/sleeperClient.js";
 import { SleeperSessionProvider } from "../auth/index.js";
-import { AuditLog, JsonFileStore } from "../audit/index.js";
+import { AuditLog, createStore } from "../audit/index.js";
 import {
   DstOverlayValueProvider,
   GenericValueProvider,
@@ -45,7 +45,7 @@ export interface AppContext {
  * league's write session (and its needs-reauth state) persists across calls.
  */
 export async function buildAppContext(config: ConfigRegistry): Promise<AppContext> {
-  const store = new JsonFileStore();
+  const store = await createStore(); // Postgres when DATABASE_URL is set, else JSON file
   const audit = new AuditLog(store);
   const pending = new PendingStore(store);
   const rules = new RulesEngine(await loadRulesConfig());
