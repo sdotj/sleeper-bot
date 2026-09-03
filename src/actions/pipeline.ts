@@ -9,7 +9,7 @@ import type {
 } from "../adapters/LeagueAdapter.js";
 import type { AuditLog } from "../audit/auditLog.js";
 import type { ValueProvider } from "../value/ValueProvider.js";
-import { RulesEngine, type ActionKind, type RuleContext } from "../rules/index.js";
+import { RulesEngine, type ActionKind, type RuleContext, type RuleVerdict } from "../rules/index.js";
 import type { ProposedAction } from "./ProposedAction.js";
 import type { PendingStore } from "./pendingStore.js";
 
@@ -138,6 +138,77 @@ export class ActionPipeline {
 
   listPending(leagueId?: string): Promise<ProposedAction[]> {
     return this.deps.pending.list(leagueId);
+  }
+
+  /** Evaluate an action against the rules without storing/executing it (agent use). */
+  async evaluate(leagueId: string, kind: ActionKind, payload: WritePayload): Promise<RuleVerdict> {
+    const adapter = this.deps.adapterFor(leagueId);
+    return this.deps.rules.evaluate(kind, payload, await this.ruleContext(leagueId, adapter, kind, payload));
+  }
+
+  /**
+   * Execute a write directly from its payload (no stored pending id) — used by
+   * the autonomous agent and Telegram taps. Re-validates rules unless `override`
+   * is set (an explicit human override of a block), then dispatches and audits.
+   */
+  async perform(
+    leagueId: string,
+    kind: ActionKind,
+    payload: WritePayload,
+    actor: "user" | "auto",
+    opts: { override?: boolean } = {},
+  ): Promise<ProposedAction> {
+    const adapter = this.deps.adapterFor(leagueId);
+    const verdict: RuleVerdict = opts.override
+      ? { decision: "allow", blockedReasons: [], warnings: ["rule override"] }
+      : await this.deps.rules.evaluate(kind, payload, await this.ruleContext(leagueId, adapter, kind, payload));
+
+    const action: ProposedAction = {
+      id: randomUUID(),
+      leagueId,
+      kind,
+      payload,
+      status: verdict.decision === "block" ? "rejected" : "pending",
+      verdict,
+      createdMs: Date.now(),
+    };
+
+    if (verdict.decision === "block") {
+      await this.deps.audit.record({
+        actionId: action.id,
+        leagueId,
+        type: "rejected",
+        actor: "rule",
+        summary: `${kind} blocked: ${verdict.blockedReasons.join("; ")}`,
+        detail: verdict,
+      });
+      return action;
+    }
+
+    try {
+      const result = await this.dispatch(adapter, action);
+      action.status = "executed";
+      action.result = { platformRef: result.platformRef, message: result.message };
+      await this.deps.audit.record({
+        actionId: action.id,
+        leagueId,
+        type: "executed",
+        actor,
+        summary: `${kind} executed${opts.override ? " (override)" : ""}: ${result.message}`,
+        detail: result,
+      });
+      return action;
+    } catch (err) {
+      await this.deps.audit.record({
+        actionId: action.id,
+        leagueId,
+        type: "failed",
+        actor,
+        summary: `${kind} failed: ${(err as Error).message}`,
+        detail: { error: (err as Error).message },
+      });
+      throw err;
+    }
   }
 
   private dispatch(adapter: WriteableLeagueAdapter, action: ProposedAction): Promise<WriteResult> {

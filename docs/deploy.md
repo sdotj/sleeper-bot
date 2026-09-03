@@ -18,6 +18,15 @@ into the image.
 | `SLEEPBOT_KTC_MODE` | no | `sf` (default) or `oqb` for 1‑QB leagues. |
 | `HOST` / `PORT` | no | Default `0.0.0.0` / `8787` in the image. |
 | `DATABASE_SSL` | no | `true`/`false` to force TLS on/off (default: on for remote hosts, off for localhost). |
+| `TELEGRAM_BOT_TOKEN` | for agent | Bot token from @BotFather. Enables autonomous alerts + approve/deny/override. |
+| `TELEGRAM_CHAT_ID` | for agent | Your chat id (from @userinfobot). Only taps from this chat are honored. |
+| `SLEEPBOT_AGENT_INTERVAL_MIN` | no | Minutes between autonomous sweeps (default 360). |
+
+The **autonomous manager** runs only for leagues with an `agent` block in their
+config *and* when `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` + `ANTHROPIC_API_KEY`
+are all set — otherwise it stays off and logs why. It needs an **always-on**
+instance (`min_machines_running = 1`). `POST /api/agent/sweep` triggers a sweep
+on demand.
 
 The `SLEEPER_TOKEN` is a JWT and **expires** — a 24/7 deploy will periodically
 hit `needs-reauth` and pause writes (reads keep working). Re-supply a fresh

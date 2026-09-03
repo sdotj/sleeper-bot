@@ -2,7 +2,7 @@ import type { WriteableLeagueAdapter } from "../adapters/LeagueAdapter.js";
 import { SleeperAdapter } from "../adapters/sleeper/SleeperAdapter.js";
 import { SleeperClient } from "../adapters/sleeper/sleeperClient.js";
 import { SleeperSessionProvider } from "../auth/index.js";
-import { AuditLog, createStore } from "../audit/index.js";
+import { AuditLog, createStore, type Store } from "../audit/index.js";
 import {
   DstOverlayValueProvider,
   GenericValueProvider,
@@ -37,6 +37,8 @@ export interface AppContext {
   pipeline: ActionPipeline;
   audit: AuditLog;
   draft: DraftAssistant;
+  /** The shared persistence store (audit, pending, agent outbox). */
+  store: Store;
 }
 
 /**
@@ -74,7 +76,7 @@ export async function buildAppContext(config: ConfigRegistry): Promise<AppContex
 
   const pipeline = new ActionPipeline({ rules, audit, pending, valueFor, adapterFor });
   const draft = new DraftAssistant({ adapterFor, valueFor });
-  return { config, adapterFor, valueFor, pipeline, audit, draft };
+  return { config, adapterFor, valueFor, pipeline, audit, draft, store };
 }
 
 /** Load the DST tier (team code -> value); empty map if no ranks file is present. */

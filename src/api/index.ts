@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { ConfigRegistry } from "../config/loader.js";
 import { buildAppContext, SleepBotOperations } from "../core/index.js";
+import { startAgent } from "../agent/index.js";
 import { buildApiServer } from "./server.js";
 
 /**
@@ -11,8 +12,19 @@ import { buildApiServer } from "./server.js";
  */
 async function main(): Promise<void> {
   const config = ConfigRegistry.load();
-  const ops = new SleepBotOperations(await buildAppContext(config));
+  const ctx = await buildAppContext(config);
+  const ops = new SleepBotOperations(ctx);
   const app = buildApiServer(ops);
+
+  // Autonomous manager + Telegram approvals (no-op unless a league opts in and
+  // TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID / ANTHROPIC_API_KEY are set).
+  const agent = startAgent(ctx, ops);
+  if (agent) {
+    app.post("/api/agent/sweep", async () => {
+      await agent.sweepAll();
+      return { ok: true };
+    });
+  }
 
   const port = Number(process.env.PORT ?? 8787);
   const host = process.env.HOST ?? "127.0.0.1";

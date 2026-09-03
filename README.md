@@ -176,6 +176,12 @@ else keeps working.
   `get_draft_board` / `get_draft_recommendations`, a GUI Draft tab (auto-refresh
   while live), and chat with real draft context. Picks are made by you in Sleeper
   (their pick-submit is an undocumented real-time websocket).
+- **Autonomous (built)** — an opt-in per-league manager: a scheduled sweep reasons
+  with Claude (+ web search for news) and proposes waiver/add-drop/trade moves
+  through the same rules → pipeline → audit. Real-time **Telegram** alerts with
+  Approve / Deny, and **Override** for rule-blocked moves. `auto` mode
+  auto-executes clean actions; warned/blocked always wait. Opt in with an `agent`
+  block in the league config + `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID`.
 - **Phase 4** — `EspnAdapter` against ESPN's cookie-based API, same interface
 
 ## License & disclaimer

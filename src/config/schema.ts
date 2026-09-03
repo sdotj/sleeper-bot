@@ -30,6 +30,17 @@ const espnConfig = z.object({
 });
 
 /**
+ * Opt a league into the autonomous manager. Omit it and the agent ignores the
+ * league entirely. `autonomy` defaults to the SAFE "manual" so the open-source
+ * default never auto-executes; set "auto" to let clean (no-warning, unblocked)
+ * actions execute without a Telegram tap (warned/blocked always wait).
+ */
+const agentConfig = z.object({
+  enabled: z.boolean().default(true),
+  autonomy: z.enum(["manual", "auto"]).default("manual"),
+});
+
+/**
  * One league entry. `platform` discriminates which platform block is required.
  * `id` is the user's own label (e.g. "my-main-league") and is what every tool
  * call passes — it is decoupled from the platform's numeric league id.
@@ -47,6 +58,8 @@ export const leagueEntrySchema = z
      * and trade-fairness warnings.
      */
     valueMode: z.enum(["redraft", "dynasty"]).default("redraft"),
+    /** Opt into the autonomous manager for this league (off unless present). */
+    agent: agentConfig.optional(),
   })
   .superRefine((entry, ctx) => {
     if (entry.platform === "sleeper" && !entry.sleeper) {

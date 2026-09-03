@@ -10,6 +10,7 @@ generated: true
 - sleepbot.adapters
 - sleepbot.adapters.interface
 - sleepbot.adapters.sleeper
+- sleepbot.agent
 - sleepbot.anthropic-api
 - sleepbot.api
 - sleepbot.audit
@@ -28,7 +29,7 @@ generated: true
 - sleepbot.value
 
 ## Ghost
-- sleepbot.agent
+None
 
 ## Orphaned
 None
@@ -41,6 +42,7 @@ None in Phase 1.
 - warning: CAIRN_CONTRACT_LEAF_UNCOVERED leaf node `sleepbot.actions` declares no contract
 - warning: CAIRN_CONTRACT_LEAF_UNCOVERED leaf node `sleepbot.adapters.interface` declares no contract
 - warning: CAIRN_CONTRACT_LEAF_UNCOVERED leaf node `sleepbot.adapters.sleeper` declares no contract
+- warning: CAIRN_CONTRACT_LEAF_UNCOVERED leaf node `sleepbot.agent` declares no contract
 - warning: CAIRN_CONTRACT_LEAF_UNCOVERED leaf node `sleepbot.api` declares no contract
 - warning: CAIRN_CONTRACT_LEAF_UNCOVERED leaf node `sleepbot.audit` declares no contract
 - warning: CAIRN_CONTRACT_LEAF_UNCOVERED leaf node `sleepbot.auth` declares no contract
@@ -54,4 +56,3 @@ None in Phase 1.
 - warning: CAIRN_CONTRACT_LEAF_UNCOVERED leaf node `sleepbot.server` declares no contract
 - warning: CAIRN_CONTRACT_LEAF_UNCOVERED leaf node `sleepbot.tools` declares no contract
 - warning: CAIRN_CONTRACT_LEAF_UNCOVERED leaf node `sleepbot.value` declares no contract
-- warning: CAIRN_RECONCILE_LANGUAGE_UNKNOWN Target `sleepbot.agent` at `src/agent` has unknown language; declare it in targets.
