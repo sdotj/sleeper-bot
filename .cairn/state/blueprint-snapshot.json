@@ -45,6 +45,18 @@
         "sleepbot.sleeper-api"
       ]
     },
+    "sleepbot.agent": {
+      "kind": "Module",
+      "parent": "sleepbot",
+      "paths": [
+        "./src/agent"
+      ],
+      "edges": [
+        "sleepbot.anthropic-api",
+        "sleepbot.core",
+        "sleepbot.notify"
+      ]
+    },
     "sleepbot.anthropic-api": {
       "kind": "Actor",
       "parent": "sleepbot",
@@ -58,6 +70,7 @@
         "./src/api"
       ],
       "edges": [
+        "sleepbot.agent",
         "sleepbot.chat",
         "sleepbot.core"
       ]
@@ -136,6 +149,17 @@
         "sleepbot.api"
       ]
     },
+    "sleepbot.notify": {
+      "kind": "Module",
+      "parent": "sleepbot",
+      "paths": [
+        "./src/notify"
+      ],
+      "edges": [
+        "sleepbot.core",
+        "sleepbot.telegram-api"
+      ]
+    },
     "sleepbot.rules": {
       "kind": "Module",
       "parent": "sleepbot",
@@ -159,6 +183,12 @@
       ]
     },
     "sleepbot.sleeper-api": {
+      "kind": "Actor",
+      "parent": "sleepbot",
+      "paths": [],
+      "edges": []
+    },
+    "sleepbot.telegram-api": {
       "kind": "Actor",
       "parent": "sleepbot",
       "paths": [],

@@ -73,10 +73,21 @@ System SleepBot "MCP server connecting Claude to fantasy football leagues" id "s
         path "./src/draft"
     }
 
+    Module Agent "Autonomous manager: scheduled sweep that reasons with Claude and proposes waiver/add-drop/trade actions through the pipeline" id "sleepbot.agent" @autonomous {
+        path "./src/agent"
+    }
+
+    Module Notify "Telegram bot: proposal alerts with approve / deny / override, executing on your reply" id "sleepbot.notify" @autonomous {
+        path "./src/notify"
+    }
+
     Actor SleeperApi "Sleeper's HTTP API — public read endpoints, plus the unofficial private write endpoints (session-auth)" id "sleepbot.sleeper-api" @external {
     }
 
     Actor AnthropicApi "Anthropic Messages API (Claude), driven server-side by the chat loop" id "sleepbot.anthropic-api" @external {
+    }
+
+    Actor TelegramApi "Telegram Bot API — sends alerts and delivers your approve/deny/override taps" id "sleepbot.telegram-api" @external {
     }
 }
 
@@ -115,3 +126,11 @@ sleepbot.gui              -> sleepbot.api                "calls the local HTTP A
 sleepbot.draft            -> sleepbot.adapters.interface  "reads drafts, picks, and the player pool"
 sleepbot.draft            -> sleepbot.value              "ranks available players by value"
 sleepbot.core             -> sleepbot.draft              "exposes draft board + recommendation operations"
+
+# Autonomous manager + Telegram approvals
+sleepbot.agent            -> sleepbot.core               "reads league state and proposes actions via the pipeline"
+sleepbot.agent            -> sleepbot.anthropic-api      "reasons over the league with Claude + web search"
+sleepbot.agent            -> sleepbot.notify             "sends proposals for approval / notification"
+sleepbot.notify           -> sleepbot.core               "executes or discards a pending action on your reply"
+sleepbot.notify           -> sleepbot.telegram-api       "sends alerts and receives approve / deny / override callbacks"
+sleepbot.api              -> sleepbot.agent              "starts the scheduled sweep + Telegram poller when enabled"

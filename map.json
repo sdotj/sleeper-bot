@@ -388,6 +388,18 @@
       ]
     },
     {
+      "id": "sleepbot.agent",
+      "kind": "module",
+      "name": "Agent",
+      "state": "ghost",
+      "paths": [
+        "./src/agent"
+      ],
+      "files": [],
+      "contracts": [],
+      "symbols": []
+    },
+    {
       "id": "sleepbot.anthropic-api",
       "kind": "actor",
       "name": "AnthropicApi",
@@ -1231,6 +1243,120 @@
       ]
     },
     {
+      "id": "sleepbot.notify",
+      "kind": "module",
+      "name": "Notify",
+      "state": "synced",
+      "paths": [
+        "./src/notify"
+      ],
+      "files": [
+        "src/notify/index.ts",
+        "src/notify/notifier.ts",
+        "src/notify/notify.test.ts",
+        "src/notify/telegramClient.ts"
+      ],
+      "contracts": [],
+      "symbols": [
+        {
+          "name": "Notifier",
+          "kind": "class",
+          "signature": "export_statement:export class Notifier { private static readonly COLLECTION = \"agent_outbox\"; private offset = 0; private running = false; constructor(private readonly deps: NotifierDeps) {} /** A plain informational message (auto-executed action, needs-reauth, etc.). */ async info(text: string): Promise<void> { await this.deps.telegram.sendMessage(this.deps.chatId, text); } /** Send a proposal awaiting a tap; persist it so the tap can act later. */ async propose(notice: ProposalNotice, mode: ProposalMode): Promise<void> { const buttons: InlineButton[][] = mode === \"override\" ? [[ { text: \"⚠️ Override & execute\", callback_data: `ovr:${notice.id}` }, { text: \"Dismiss\", callback_data: `no:${notice.id}` }, ]] : [[ { text: \"✅ Approve\", callback_data: `ok:${notice.id}` }, { text: \"❌ Deny\", callback_data: `no:${notice.id}` }, ]]; const { message_id } = await this.deps.telegram.sendMessage( this.deps.chatId, this.format(notice, mode), buttons, ); const rec: OutboxRecord = { id: notice.id, leagueId: notice.leagueId, kind: notice.kind, payload: notice.payload, mode, chatMessageId: message_id, createdMs: Date.now(), }; await this.deps.store.put(Notifier.COLLECTION, notice.id, rec); } /** Handle one button tap (exposed for tests). callback_data is `verb:id`. */ async handleCallback(data: string, callbackQueryId: string): Promise<void> { const [verb, id] = data.split(\":\"); const rec = id ? await this.deps.store.get<OutboxRecord>(Notifier.COLLECTION, id) : null; if (!rec) { await this.deps.telegram.answerCallbackQuery(callbackQueryId, \"This proposal is no longer pending.\"); return; } let outcome: string; if (verb === \"no\") { outcome = \"❌ Dismissed — nothing sent.\"; } else if (verb === \"ok\" || verb === \"ovr\") { try { const r = await this.deps.perform(rec.leagueId, rec.kind, rec.payload, { override: verb === \"ovr\" }); outcome = r.ok ? `✅ Executed — ${r.message}` : `⚠️ ${r.message}`; } catch (err) { outcome = `⚠️ Failed — ${(err as Error).message}`; } } else { outcome = \"Unknown action.\"; } await this.deps.store.delete(Notifier.COLLECTION, rec.id); if (rec.chatMessageId != null) { await this.deps.telegram.editMessageText(this.deps.chatId, rec.chatMessageId, outcome).catch(() => {}); } await this.deps.telegram.answerCallbackQuery(callbackQueryId); } /** One long-poll cycle: fetch updates, dispatch taps from the allowed chat. */ async pollOnce(): Promise<void> { const updates = await this.deps.telegram.getUpdates(this.offset); for (const u of updates) { this.offset = Math.max(this.offset, u.update_id + 1); const cq = u.callback_query; if (!cq?.data) continue; if (cq.message && String(cq.message.chat.id) !== String(this.deps.chatId)) continue; await this.handleCallback(cq.data, cq.id); } } /** Start/stop the background poll loop. */ start(): void { if (this.running) return; this.running = true; void this.loop(); } stop(): void { this.running = false; } private async loop(): Promise<void> { while (this.running) { try { await this.pollOnce(); } catch { await new Promise((r) => setTimeout(r, 3000)); } } } private format(n: ProposalNotice, mode: ProposalMode): string { const lines = [`🤖 <b>SleepBot proposes</b> (${n.leagueId})`, n.summary]; if (n.warnings.length) lines.push(`⚠️ ${n.warnings.join(\"; \")}`); if (mode === \"override\" && n.blockedReasons.length) lines.push(`🛑 Blocked by rule: ${n.blockedReasons.join(\"; \")}`); lines.push(mode === \"override\" ? \"Override the rule to send it?\" : \"Send it?\"); return lines.join(\"\\n\"); } }",
+          "file": "src/notify/notifier.ts",
+          "line": 58,
+          "end_line": 169
+        },
+        {
+          "name": "TelegramClient",
+          "kind": "class",
+          "signature": "export_statement:export class TelegramClient { constructor( private readonly token: string, private readonly fetchFn: TgFetch = defaultFetch, ) {} private async call<T>(method: string, body: unknown): Promise<T> { const res = await this.fetchFn(`${BASE}/bot${this.token}/${method}`, { method: \"POST\", headers: { \"content-type\": \"application/json\" }, body: JSON.stringify(body), }); const parsed = JSON.parse(await res.text()) as { ok: boolean; result?: T; description?: string }; if (!parsed.ok) throw new Error(`Telegram ${method} failed: ${parsed.description ?? res.status}`); return parsed.result as T; } sendMessage(chatId: string | number, text: string, buttons?: InlineButton[][]): Promise<{ message_id: number }> { return this.call(\"sendMessage\", { chat_id: chatId, text, parse_mode: \"HTML\", ...(buttons ? { reply_markup: { inline_keyboard: buttons } } : {}), }); } editMessageText(chatId: string | number, messageId: number, text: string): Promise<unknown> { return this.call(\"editMessageText\", { chat_id: chatId, message_id: messageId, text, parse_mode: \"HTML\" }); } answerCallbackQuery(callbackQueryId: string, text?: string): Promise<unknown> { return this.call(\"answerCallbackQuery\", { callback_query_id: callbackQueryId, ...(text ? { text } : {}) }); } /** Long-poll for updates since `offset`. */ getUpdates(offset: number, timeoutSec = 25): Promise<TelegramUpdate[]> { return this.call(\"getUpdates\", { offset, timeout: timeoutSec, allowed_updates: [\"callback_query\"] }); } }",
+          "file": "src/notify/telegramClient.ts",
+          "line": 32,
+          "end_line": 70
+        },
+        {
+          "name": "InlineButton",
+          "kind": "interface",
+          "signature": "export_statement:export interface InlineButton { text: string; callback_data: string; }",
+          "file": "src/notify/telegramClient.ts",
+          "line": 8,
+          "end_line": 11
+        },
+        {
+          "name": "NotifierDeps",
+          "kind": "interface",
+          "signature": "export_statement:export interface NotifierDeps { telegram: TelegramClient; store: Store; chatId: string; perform: PerformFn; }",
+          "file": "src/notify/notifier.ts",
+          "line": 45,
+          "end_line": 50
+        },
+        {
+          "name": "PerformResult",
+          "kind": "interface",
+          "signature": "export_statement:export interface PerformResult { ok: boolean; message: string; }",
+          "file": "src/notify/notifier.ts",
+          "line": 10,
+          "end_line": 13
+        },
+        {
+          "name": "ProposalNotice",
+          "kind": "interface",
+          "signature": "export_statement:export interface ProposalNotice { id: string; leagueId: string; kind: ActionKind; payload: WritePayload; /** One-line human summary of the action (with player names). */ summary: string; warnings: string[]; blockedReasons: string[]; }",
+          "file": "src/notify/notifier.ts",
+          "line": 24,
+          "end_line": 33
+        },
+        {
+          "name": "TelegramUpdate",
+          "kind": "interface",
+          "signature": "export_statement:export interface TelegramUpdate { update_id: number; callback_query?: { id: string; data?: string; message?: { message_id: number; chat: { id: number } }; from?: { id: number }; }; }",
+          "file": "src/notify/telegramClient.ts",
+          "line": 14,
+          "end_line": 22
+        },
+        {
+          "name": "PerformFn",
+          "kind": "type",
+          "signature": "export_statement:export type PerformFn = ( leagueId: string, kind: ActionKind, payload: WritePayload, opts: { override: boolean }, ) => Promise<PerformResult>;",
+          "file": "src/notify/notifier.ts",
+          "line": 16,
+          "end_line": 21
+        },
+        {
+          "name": "ProposalMode",
+          "kind": "type",
+          "signature": "export_statement:export type ProposalMode = \"approve\" | \"override\";",
+          "file": "src/notify/notifier.ts",
+          "line": 7,
+          "end_line": 7
+        },
+        {
+          "name": "TgFetch",
+          "kind": "type",
+          "signature": "export_statement:export type TgFetch = ( url: string, init: { method: string; headers: Record<string, string>; body: string }, ) => Promise<{ status: number; text(): Promise<string> }>;",
+          "file": "src/notify/telegramClient.ts",
+          "line": 25,
+          "end_line": 28
+        },
+        {
+          "name": "export {\n  Notifier,\n  type NotifierDeps,\n  type ProposalNotice,\n  type ProposalMode,\n  type PerformFn,\n  type PerformResult,\n} from \"./notifier.js\";",
+          "kind": "other",
+          "signature": "export_statement:export { Notifier, type NotifierDeps, type ProposalNotice, type ProposalMode, type PerformFn, type PerformResult, } from \"./notifier.js\";",
+          "file": "src/notify/index.ts",
+          "line": 2,
+          "end_line": 9
+        },
+        {
+          "name": "export { TelegramClient, type InlineButton, type TelegramUpdate, type TgFetch } from \"./telegramClient.js\";",
+          "kind": "other",
+          "signature": "export_statement:export { TelegramClient, type InlineButton, type TelegramUpdate, type TgFetch } from \"./telegramClient.js\";",
+          "file": "src/notify/index.ts",
+          "line": 1,
+          "end_line": 1
+        }
+      ]
+    },
+    {
       "id": "sleepbot.rules",
       "kind": "module",
       "name": "Rules",
@@ -1370,6 +1496,16 @@
       "id": "sleepbot.sleeper-api",
       "kind": "actor",
       "name": "SleeperApi",
+      "state": "synced",
+      "paths": [],
+      "files": [],
+      "contracts": [],
+      "symbols": []
+    },
+    {
+      "id": "sleepbot.telegram-api",
+      "kind": "actor",
+      "name": "TelegramApi",
       "state": "synced",
       "paths": [],
       "files": [],
@@ -1819,6 +1955,21 @@
       "description": "obtains a session credential for write calls"
     },
     {
+      "from": "sleepbot.agent",
+      "to": "sleepbot.core",
+      "description": "reads league state and proposes actions via the pipeline"
+    },
+    {
+      "from": "sleepbot.agent",
+      "to": "sleepbot.anthropic-api",
+      "description": "reasons over the league with Claude + web search"
+    },
+    {
+      "from": "sleepbot.agent",
+      "to": "sleepbot.notify",
+      "description": "sends proposals for approval / notification"
+    },
+    {
       "from": "sleepbot.api",
       "to": "sleepbot.core",
       "description": "serves core operations over local HTTP"
@@ -1827,6 +1978,11 @@
       "from": "sleepbot.api",
       "to": "sleepbot.chat",
       "description": "hosts the /api/chat endpoint"
+    },
+    {
+      "from": "sleepbot.api",
+      "to": "sleepbot.agent",
+      "description": "starts the scheduled sweep + Telegram poller when enabled"
     },
     {
       "from": "sleepbot.auth",
@@ -1894,6 +2050,16 @@
       "description": "calls the local HTTP API"
     },
     {
+      "from": "sleepbot.notify",
+      "to": "sleepbot.core",
+      "description": "executes or discards a pending action on your reply"
+    },
+    {
+      "from": "sleepbot.notify",
+      "to": "sleepbot.telegram-api",
+      "description": "sends alerts and receives approve / deny / override callbacks"
+    },
+    {
       "from": "sleepbot.rules",
       "to": "sleepbot.value",
       "description": "warn rules consult player value"
@@ -1930,6 +2096,14 @@
     }
   ],
   "findings": [
+    {
+      "code": "CAIRN_RECONCILE_LANGUAGE_UNKNOWN",
+      "severity": "warning",
+      "message": "Target `sleepbot.agent` at `src/agent` has unknown language; declare it in targets.",
+      "node": "sleepbot.agent",
+      "target": "sleepbot.agent:src/agent",
+      "path": "src/agent"
+    },
     {
       "code": "CAIRN_CONTRACT_LEAF_UNCOVERED",
       "severity": "warning",
@@ -2005,6 +2179,13 @@
       "severity": "warning",
       "message": "leaf node `sleepbot.gui` declares no contract",
       "node": "sleepbot.gui",
+      "path": null
+    },
+    {
+      "code": "CAIRN_CONTRACT_LEAF_UNCOVERED",
+      "severity": "warning",
+      "message": "leaf node `sleepbot.notify` declares no contract",
+      "node": "sleepbot.notify",
       "path": null
     },
     {

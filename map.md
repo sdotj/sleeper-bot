@@ -19,14 +19,16 @@ generated: true
 - sleepbot.core
 - sleepbot.draft
 - sleepbot.gui
+- sleepbot.notify
 - sleepbot.rules
 - sleepbot.server
 - sleepbot.sleeper-api
+- sleepbot.telegram-api
 - sleepbot.tools
 - sleepbot.value
 
 ## Ghost
-None
+- sleepbot.agent
 
 ## Orphaned
 None
@@ -47,7 +49,9 @@ None in Phase 1.
 - warning: CAIRN_CONTRACT_LEAF_UNCOVERED leaf node `sleepbot.core` declares no contract
 - warning: CAIRN_CONTRACT_LEAF_UNCOVERED leaf node `sleepbot.draft` declares no contract
 - warning: CAIRN_CONTRACT_LEAF_UNCOVERED leaf node `sleepbot.gui` declares no contract
+- warning: CAIRN_CONTRACT_LEAF_UNCOVERED leaf node `sleepbot.notify` declares no contract
 - warning: CAIRN_CONTRACT_LEAF_UNCOVERED leaf node `sleepbot.rules` declares no contract
 - warning: CAIRN_CONTRACT_LEAF_UNCOVERED leaf node `sleepbot.server` declares no contract
 - warning: CAIRN_CONTRACT_LEAF_UNCOVERED leaf node `sleepbot.tools` declares no contract
 - warning: CAIRN_CONTRACT_LEAF_UNCOVERED leaf node `sleepbot.value` declares no contract
+- warning: CAIRN_RECONCILE_LANGUAGE_UNKNOWN Target `sleepbot.agent` at `src/agent` has unknown language; declare it in targets.
