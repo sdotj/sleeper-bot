@@ -21,6 +21,10 @@ into the image.
 | `TELEGRAM_BOT_TOKEN` | for agent | Bot token from @BotFather. Enables autonomous alerts + approve/deny/override. |
 | `TELEGRAM_CHAT_ID` | for agent | Your chat id (from @userinfobot). Only taps from this chat are honored. |
 | `SLEEPBOT_AGENT_INTERVAL_MIN` | no | Minutes between autonomous sweeps (default 360). |
+| `SLEEPBOT_AUTH_USER` | **for public deploy** | Login username. The login gate is enforced only when this + the two below are all set. |
+| `SLEEPBOT_AUTH_PASSWORD_HASH` | **for public deploy** | scrypt hash of the password — run `npm run hash-password -- '<pw>'`. The raw password is never stored. |
+| `SLEEPBOT_JWT_SECRET` | **for public deploy** | Long random string signing login tokens. Rotating it logs everyone out. |
+| `SLEEPBOT_AUTH_TTL` | no | Login lifetime, jsonwebtoken format (default `7d`). |
 
 The **autonomous manager** runs only for leagues with an `agent` block in their
 config *and* when `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` + `ANTHROPIC_API_KEY`
@@ -93,18 +97,23 @@ Cloud Run scales to zero, so run the agent in **webhook + external-cron** mode
 
 Both `/internal/*` routes require `SLEEPBOT_INTERNAL_SECRET`. The service must be
 `--allow-unauthenticated` (Telegram webhooks can't send Google OIDC), so those
-routes are protected by that app secret instead.
+routes are protected by that app secret instead. The GUI + `/api/*` are protected
+by the **login gate** — set `SLEEPBOT_AUTH_USER` / `SLEEPBOT_AUTH_PASSWORD_HASH` /
+`SLEEPBOT_JWT_SECRET` (below) before you expose the service.
 
 ```bash
 # 1. Put secrets in Secret Manager (incl. SLEEPBOT_CONFIG_JSON — avoids
 #    comma-escaping in --set-env-vars, and DATABASE_URL from Cloud SQL/Neon):
 printf '%s' "$ANTHROPIC_API_KEY" | gcloud secrets create anthropic-key --data-file=-
 # ...repeat for sleeper-token, tg-bot-token, database-url, internal-secret, config-json
+# Login gate: hash the password locally, then store the hash + JWT secret:
+npm run hash-password -- 'your-password' | tr -d '\n' | gcloud secrets create auth-hash --data-file=-
+printf '%s' "$(openssl rand -hex 32)" | gcloud secrets create jwt-secret --data-file=-
 
 # 2. First deploy (URL is only known after this):
 gcloud run deploy sleepbot --source . --region us-central1 --allow-unauthenticated \
-  --set-secrets ANTHROPIC_API_KEY=anthropic-key:latest,TELEGRAM_BOT_TOKEN=tg-bot-token:latest,DATABASE_URL=database-url:latest,SLEEPBOT_INTERNAL_SECRET=internal-secret:latest,SLEEPBOT_CONFIG_JSON=config-json:latest \
-  --set-env-vars TELEGRAM_CHAT_ID=123456789,SLEEPBOT_KTC_MODE=oqb
+  --set-secrets ANTHROPIC_API_KEY=anthropic-key:latest,TELEGRAM_BOT_TOKEN=tg-bot-token:latest,DATABASE_URL=database-url:latest,SLEEPBOT_INTERNAL_SECRET=internal-secret:latest,SLEEPBOT_CONFIG_JSON=config-json:latest,SLEEPBOT_AUTH_PASSWORD_HASH=auth-hash:latest,SLEEPBOT_JWT_SECRET=jwt-secret:latest \
+  --set-env-vars TELEGRAM_CHAT_ID=123456789,SLEEPBOT_KTC_MODE=oqb,SLEEPBOT_AUTH_USER=sam
 
 # 3. Re-deploy with the now-known URL so the agent registers its webhook:
 gcloud run services update sleepbot --region us-central1 \
@@ -121,10 +130,14 @@ Leave `min-instances` at 0 and CPU throttling on (the defaults) — the webhook
 and cron wake the service on demand. `SLEEPER_TOKEN` (writes) can be added as a
 secret whenever you're ready.
 
-> ⚠️ `--allow-unauthenticated` also exposes the GUI + `/api/chat` publicly. The
-> `/internal/*` routes are secret-gated, but the chat endpoint (which spends your
-> Anthropic budget) is not — put the service behind IAP / an auth proxy, or add
-> app-level auth, before sharing the URL.
+> ⚠️ `--allow-unauthenticated` makes the service reachable by anyone with the
+> URL. The **login gate** closes this: with `SLEEPBOT_AUTH_USER` /
+> `SLEEPBOT_AUTH_PASSWORD_HASH` / `SLEEPBOT_JWT_SECRET` set, every `/api/*` route
+> and the GUI require a login token, so the chat endpoint (which spends your
+> Anthropic budget) is protected. Verify after deploy: `curl <URL>/api/leagues`
+> should return `401 {"code":"auth_required"}`. (`/internal/*` stay gated by
+> `SLEEPBOT_INTERNAL_SECRET`, a separate secret.) IAP is still an option if you'd
+> rather not expose a login page at all.
 
 ## Any other Docker host
 

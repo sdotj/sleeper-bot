@@ -72,7 +72,8 @@
       "edges": [
         "sleepbot.agent",
         "sleepbot.chat",
-        "sleepbot.core"
+        "sleepbot.core",
+        "sleepbot.gate"
       ]
     },
     "sleepbot.audit": {
@@ -138,6 +139,14 @@
         "sleepbot.adapters.interface",
         "sleepbot.value"
       ]
+    },
+    "sleepbot.gate": {
+      "kind": "Module",
+      "parent": "sleepbot",
+      "paths": [
+        "./src/gate"
+      ],
+      "edges": []
     },
     "sleepbot.gui": {
       "kind": "Module",

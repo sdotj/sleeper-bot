@@ -61,6 +61,10 @@ System SleepBot "MCP server connecting Claude to fantasy football leagues" id "s
         path "./src/api"
     }
 
+    Module Gate "Login gate: single predetermined-user JWT auth guarding the HTTP API (scrypt password, @fastify/jwt)" id "sleepbot.gate" @cloud {
+        path "./src/gate"
+    }
+
     Module Chat "Server-side Claude chat loop: Anthropic Messages API tool-use over SleepBot operations" id "sleepbot.chat" @phase3 {
         path "./src/chat"
     }
@@ -121,6 +125,9 @@ sleepbot.api              -> sleepbot.chat               "hosts the /api/chat en
 sleepbot.chat             -> sleepbot.core               "exposes core operations as Claude tools"
 sleepbot.chat             -> sleepbot.anthropic-api      "runs the Messages API tool-use loop"
 sleepbot.gui              -> sleepbot.api                "calls the local HTTP API"
+
+# Access gate — login/JWT protecting the HTTP surface before a public deploy
+sleepbot.api              -> sleepbot.gate               "verifies a login JWT on protected routes; issues one at /api/login"
 
 # Drafts — read-only board + recommendations assistant
 sleepbot.draft            -> sleepbot.adapters.interface  "reads drafts, picks, and the player pool"

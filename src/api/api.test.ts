@@ -8,14 +8,14 @@ const ops = (over: Record<string, unknown>) => over as unknown as SleepBotOperat
 
 describe("API routes", () => {
   it("health and leagues return data", async () => {
-    const app = buildApiServer(ops({ listLeagues: () => [{ id: "L1", platform: "sleeper" }] }));
+    const app = await buildApiServer(ops({ listLeagues: () => [{ id: "L1", platform: "sleeper" }] }));
     expect((await app.inject({ method: "GET", url: "/api/health" })).json()).toEqual({ ok: true });
     const leagues = await app.inject({ method: "GET", url: "/api/leagues" });
     expect(leagues.json()).toEqual([{ id: "L1", platform: "sleeper" }]);
   });
 
   it("maps an unknown league to 404", async () => {
-    const app = buildApiServer(
+    const app = await buildApiServer(
       ops({
         getLeagueInfo: () => {
           throw new Error('unknown leagueId "nope". Configured leagues: L1');
@@ -28,7 +28,7 @@ describe("API routes", () => {
   });
 
   it("maps a needs-reauth failure to 401", async () => {
-    const app = buildApiServer(
+    const app = await buildApiServer(
       ops({
         executeAction: () => {
           throw new NeedsReauthError("supply a fresh SLEEPER_TOKEN");
@@ -40,7 +40,7 @@ describe("API routes", () => {
   });
 
   it("annotates a proposal with a draft note", async () => {
-    const app = buildApiServer(
+    const app = await buildApiServer(
       ops({
         proposeAddDrop: async () => ({
           id: "a1",

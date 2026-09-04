@@ -14,7 +14,7 @@ async function main(): Promise<void> {
   const config = ConfigRegistry.load();
   const ctx = await buildAppContext(config);
   const ops = new SleepBotOperations(ctx);
-  const app = buildApiServer(ops);
+  const app = await buildApiServer(ops);
 
   // Autonomous manager + Telegram approvals (no-op unless a league opts in and
   // TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID / ANTHROPIC_API_KEY are set).

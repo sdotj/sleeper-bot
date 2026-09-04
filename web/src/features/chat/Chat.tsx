@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
+import { authHeaders, signalAuthRequired } from "../../lib/auth";
 import { Button } from "../../components/ui";
 
 interface Msg {
@@ -46,12 +47,14 @@ export function Chat({
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: authHeaders({ "content-type": "application/json" }),
         body: JSON.stringify({ messages: history, draftContext }),
       });
       const data = await res.json();
-      if (!res.ok) setError(data.error ?? "chat failed");
-      else setMsgs([...history, { role: "assistant", content: data.reply }]);
+      if (!res.ok) {
+        if (res.status === 401 && data.code === "auth_required") signalAuthRequired();
+        setError(data.error ?? "chat failed");
+      } else setMsgs([...history, { role: "assistant", content: data.reply }]);
     } catch (e) {
       setError((e as Error).message);
     } finally {

@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import fastifyStatic from "@fastify/static";
 import { NeedsReauthError } from "../auth/index.js";
+import { registerAuth } from "../gate/index.js";
 import { SleepBotOperations, proposalOutcome } from "../core/index.js";
 import { ChatUnavailableError, runChatTurn, type ChatMessage, type DraftContextRef } from "../chat/index.js";
 import type {
@@ -18,8 +19,13 @@ import type {
  * call an operation, and let the shared error mapper translate failures
  * (dec.gui-architecture).
  */
-export function buildApiServer(ops: SleepBotOperations): FastifyInstance {
+export async function buildApiServer(ops: SleepBotOperations): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
+
+  // Login gate: registers @fastify/jwt, POST /api/login, and an onRequest guard
+  // over every protected route. No-op (open API) unless auth is configured
+  // (dec.api-auth-gate). Registered before the routes so its hook covers them.
+  await registerAuth(app);
 
   /** Map a thrown error onto an HTTP status the GUI can branch on. */
   const fail = (reply: FastifyReply, err: unknown) => {

@@ -19,6 +19,7 @@ generated: true
 - sleepbot.config
 - sleepbot.core
 - sleepbot.draft
+- sleepbot.gate
 - sleepbot.gui
 - sleepbot.notify
 - sleepbot.rules
@@ -50,6 +51,7 @@ None in Phase 1.
 - warning: CAIRN_CONTRACT_LEAF_UNCOVERED leaf node `sleepbot.config` declares no contract
 - warning: CAIRN_CONTRACT_LEAF_UNCOVERED leaf node `sleepbot.core` declares no contract
 - warning: CAIRN_CONTRACT_LEAF_UNCOVERED leaf node `sleepbot.draft` declares no contract
+- warning: CAIRN_CONTRACT_LEAF_UNCOVERED leaf node `sleepbot.gate` declares no contract
 - warning: CAIRN_CONTRACT_LEAF_UNCOVERED leaf node `sleepbot.gui` declares no contract
 - warning: CAIRN_CONTRACT_LEAF_UNCOVERED leaf node `sleepbot.notify` declares no contract
 - warning: CAIRN_CONTRACT_LEAF_UNCOVERED leaf node `sleepbot.rules` declares no contract

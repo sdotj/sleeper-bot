@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { authHeaders, signalAuthRequired } from "./auth";
 import type {
   AuditEvent,
   AuthStatus,
@@ -12,9 +13,12 @@ import type {
 } from "./types";
 
 async function get<T>(url: string): Promise<T> {
-  const res = await fetch(url);
+  const res = await fetch(url, { headers: authHeaders() });
   if (!res.ok) {
-    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    const body = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
+    // A login-required 401 (distinct from a Sleeper-token reauth) sends us back
+    // to the login screen; anything else surfaces as a normal error.
+    if (res.status === 401 && body.code === "auth_required") signalAuthRequired();
     throw new Error(body.error ?? `${res.status} ${res.statusText}`);
   }
   return res.json() as Promise<T>;
