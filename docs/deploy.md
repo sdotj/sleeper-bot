@@ -107,11 +107,14 @@ by the **login gate** — set `SLEEPBOT_AUTH_USER` / `SLEEPBOT_AUTH_PASSWORD_HAS
 #    comma-escaping in --set-env-vars, and DATABASE_URL from Cloud SQL/Neon):
 printf '%s' "$ANTHROPIC_API_KEY" | gcloud secrets create anthropic-key --data-file=-
 # ...repeat for sleeper-token, tg-bot-token, database-url, internal-secret, config-json
-# Login gate: hash the password locally, then store the hash + JWT secret:
-npm run hash-password -- 'your-password' | tr -d '\n' | gcloud secrets create auth-hash --data-file=-
+# Login gate: hash the password locally, then store the hash + JWT secret.
+# NOTE: use `npm run --silent` when piping — a bare `npm run` prepends its own
+# banner lines to the pipe, which would corrupt the stored value.
+npm run --silent hash-password -- 'your-password' | tr -d '\n' | gcloud secrets create auth-hash --data-file=-
 printf '%s' "$(openssl rand -hex 32)" | gcloud secrets create jwt-secret --data-file=-
-# Secret-storage key (lets the Settings panel store your Sleeper token encrypted):
-npm run gen-secret-key | tr -d '\n' | gcloud secrets create secret-key --data-file=-
+# Secret-storage key (lets the Settings panel store your Sleeper token encrypted).
+# openssl avoids any npm-banner noise; the value must be exactly 64 hex chars.
+openssl rand -hex 32 | tr -d '\n' | gcloud secrets create secret-key --data-file=-
 
 # 2. First deploy (URL is only known after this):
 gcloud run deploy sleepbot --source . --region us-central1 --allow-unauthenticated \
