@@ -65,6 +65,10 @@ System SleepBot "MCP server connecting Claude to fantasy football leagues" id "s
         path "./src/gate"
     }
 
+    Module Crypto "AES-256-GCM sealing for UI-editable secrets stored in the DB (key from SLEEPBOT_SECRET_KEY)" id "sleepbot.crypto" @cloud {
+        path "./src/crypto"
+    }
+
     Module Chat "Server-side Claude chat loop: Anthropic Messages API tool-use over SleepBot operations" id "sleepbot.chat" @phase3 {
         path "./src/chat"
     }
@@ -128,6 +132,9 @@ sleepbot.gui              -> sleepbot.api                "calls the local HTTP A
 
 # Access gate — login/JWT protecting the HTTP surface before a public deploy
 sleepbot.api              -> sleepbot.gate               "verifies a login JWT on protected routes; issues one at /api/login"
+
+# UI-editable config + secrets — config lives in the store, secrets sealed at rest
+sleepbot.core             -> sleepbot.crypto             "seals UI-set secrets (the Sleeper token) before storing them"
 
 # Drafts — read-only board + recommendations assistant
 sleepbot.draft            -> sleepbot.adapters.interface  "reads drafts, picks, and the player pool"

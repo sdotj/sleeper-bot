@@ -37,6 +37,12 @@ export interface SessionProvider {
   getToken(): Promise<string>;
   /** Called after an unauthorized/expired write: attempt refresh, else enter `needs-reauth`. */
   markInvalid(): Promise<void>;
+  /**
+   * Replace the credential live (e.g. the user pastes a fresh token in the
+   * settings panel). Clears any prior `needs-reauth` and re-derives status from
+   * the new token (dec.ui-config-editing).
+   */
+  setToken(token: string | undefined): void;
   /** A readable status snapshot (for a status tool / the future UI). */
   status(): SessionStatus;
 }

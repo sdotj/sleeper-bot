@@ -10,8 +10,9 @@ import { Matchups } from "./features/matchups/Matchups";
 import { DraftView } from "./features/draft/DraftView";
 import { Audit } from "./features/audit/Audit";
 import { Chat } from "./features/chat/Chat";
+import { Settings } from "./features/settings/Settings";
 
-const TABS = ["My Team", "Standings", "Matchups", "Draft", "Audit", "Chat"] as const;
+const TABS = ["My Team", "Standings", "Matchups", "Draft", "Audit", "Chat", "Settings"] as const;
 type Tab = (typeof TABS)[number];
 
 export function App() {
@@ -55,6 +56,7 @@ function Dashboard({ loggedIn }: { loggedIn: boolean }) {
                 <Chat />
               </div>
             )}
+            {tab === "Settings" && <Settings />}
           </main>
         </div>
       )}

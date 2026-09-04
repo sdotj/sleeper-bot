@@ -9,6 +9,8 @@ import type {
   League,
   Matchup,
   Roster,
+  SleepBotConfigDoc,
+  SleeperTokenStatus,
   StandingRow,
 } from "./types";
 
@@ -22,6 +24,22 @@ async function get<T>(url: string): Promise<T> {
     // which case signalAuthRequired heals instead of wiping.
     if (res.status === 401 && body.code === "auth_required") signalAuthRequired(sent);
     throw new Error(body.error ?? `${res.status} ${res.statusText}`);
+  }
+  return res.json() as Promise<T>;
+}
+
+/** Mutating request (POST/PUT/DELETE) sharing the same auth + error handling as get. */
+async function send<T>(method: string, url: string, body?: unknown): Promise<T> {
+  const sent = getToken();
+  const res = await fetch(url, {
+    method,
+    headers: authHeaders(body === undefined ? {} : { "content-type": "application/json" }),
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const b = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
+    if (res.status === 401 && b.code === "auth_required") signalAuthRequired(sent);
+    throw new Error(b.error ?? `${res.status} ${res.statusText}`);
   }
   return res.json() as Promise<T>;
 }
@@ -50,6 +68,15 @@ export const api = {
     if (o.limit != null) q.set("limit", String(o.limit));
     return get<DraftRecommendation[]>(`/api/leagues/${id}/drafts/${draftId}/recommendations?${q}`);
   },
+
+  // --- settings ---
+  config: () => get<SleepBotConfigDoc>("/api/config"),
+  saveConfig: (config: SleepBotConfigDoc) => send<SleepBotConfigDoc>("PUT", "/api/config", config),
+  resetConfig: () => send<SleepBotConfigDoc>("POST", "/api/config/reset"),
+  sleeperToken: () => get<SleeperTokenStatus>("/api/secrets/sleeper"),
+  setSleeperToken: (token: string) =>
+    send<SleeperTokenStatus>("PUT", "/api/secrets/sleeper", { token }),
+  clearSleeperToken: () => send<SleeperTokenStatus>("DELETE", "/api/secrets/sleeper"),
 };
 
 /** Tiny async-data hook: re-runs when any dep changes. */

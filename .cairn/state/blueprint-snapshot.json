@@ -125,9 +125,18 @@
         "sleepbot.audit",
         "sleepbot.auth",
         "sleepbot.config",
+        "sleepbot.crypto",
         "sleepbot.draft",
         "sleepbot.value"
       ]
+    },
+    "sleepbot.crypto": {
+      "kind": "Module",
+      "parent": "sleepbot",
+      "paths": [
+        "./src/crypto"
+      ],
+      "edges": []
     },
     "sleepbot.draft": {
       "kind": "Module",

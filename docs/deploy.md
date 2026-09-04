@@ -10,7 +10,7 @@ into the image.
 
 | Var | Required | What |
 |---|---|---|
-| `SLEEPBOT_CONFIG_JSON` | yes | Your leagues config as inline JSON (same shape as `config/leagues.example.json`). Replaces the `config/leagues.json` file in the cloud. |
+| `SLEEPBOT_CONFIG_JSON` | yes (first boot) | Your leagues config as inline JSON (same shape as `config/leagues.example.json`). **Seed only:** on first boot it's copied into the DB, after which the DB is authoritative and the Settings panel edits it — a later change to this var is ignored unless you hit "Reset to env config". |
 | `DATABASE_URL` | yes (cloud) | Postgres connection string. Without it, state is a local JSON file (ephemeral in a container). |
 | `ANTHROPIC_API_KEY` | for chat | Enables the chat/assistant. Without it, chat returns a clear message and everything else works. |
 | `SLEEPER_TOKEN` | for writes | Session JWT for real trades/waivers/adds. Without it, writes fail safe (`needs-reauth`); reads/drafts work. |
@@ -25,6 +25,7 @@ into the image.
 | `SLEEPBOT_AUTH_PASSWORD_HASH` | **for public deploy** | scrypt hash of the password — run `npm run hash-password -- '<pw>'`. The raw password is never stored. |
 | `SLEEPBOT_JWT_SECRET` | **for public deploy** | Long random string signing login tokens. Rotating it logs everyone out. |
 | `SLEEPBOT_AUTH_TTL` | no | Login lifetime, jsonwebtoken format (default `7d`). |
+| `SLEEPBOT_SECRET_KEY` | for UI secrets | 32-byte key (`npm run gen-secret-key`) that encrypts the Sleeper token when you set it from the Settings panel. Unset ⇒ that field is read-only and `SLEEPER_TOKEN` (env) is used. |
 
 The **autonomous manager** runs only for leagues with an `agent` block in their
 config *and* when `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` + `ANTHROPIC_API_KEY`
@@ -109,10 +110,12 @@ printf '%s' "$ANTHROPIC_API_KEY" | gcloud secrets create anthropic-key --data-fi
 # Login gate: hash the password locally, then store the hash + JWT secret:
 npm run hash-password -- 'your-password' | tr -d '\n' | gcloud secrets create auth-hash --data-file=-
 printf '%s' "$(openssl rand -hex 32)" | gcloud secrets create jwt-secret --data-file=-
+# Secret-storage key (lets the Settings panel store your Sleeper token encrypted):
+npm run gen-secret-key | tr -d '\n' | gcloud secrets create secret-key --data-file=-
 
 # 2. First deploy (URL is only known after this):
 gcloud run deploy sleepbot --source . --region us-central1 --allow-unauthenticated \
-  --set-secrets ANTHROPIC_API_KEY=anthropic-key:latest,TELEGRAM_BOT_TOKEN=tg-bot-token:latest,DATABASE_URL=database-url:latest,SLEEPBOT_INTERNAL_SECRET=internal-secret:latest,SLEEPBOT_CONFIG_JSON=config-json:latest,SLEEPBOT_AUTH_PASSWORD_HASH=auth-hash:latest,SLEEPBOT_JWT_SECRET=jwt-secret:latest \
+  --set-secrets ANTHROPIC_API_KEY=anthropic-key:latest,TELEGRAM_BOT_TOKEN=tg-bot-token:latest,DATABASE_URL=database-url:latest,SLEEPBOT_INTERNAL_SECRET=internal-secret:latest,SLEEPBOT_CONFIG_JSON=config-json:latest,SLEEPBOT_AUTH_PASSWORD_HASH=auth-hash:latest,SLEEPBOT_JWT_SECRET=jwt-secret:latest,SLEEPBOT_SECRET_KEY=secret-key:latest \
   --set-env-vars TELEGRAM_CHAT_ID=123456789,SLEEPBOT_KTC_MODE=oqb,SLEEPBOT_AUTH_USER=sam
 
 # 3. Re-deploy with the now-known URL so the agent registers its webhook:

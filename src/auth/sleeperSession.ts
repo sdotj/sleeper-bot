@@ -41,7 +41,18 @@ export class SleeperSessionProvider implements SessionProvider {
 
   constructor(opts: SleeperSessionOptions = {}) {
     this.notify = opts.notify ?? ((m) => console.error(`[auth] ${m}`));
-    this.token = opts.token;
+    this.setToken(opts.token);
+  }
+
+  /**
+   * Adopt a new token (or clear it). Resets the invalidated flag — a freshly
+   * pasted token immediately clears `needs-reauth` (dec.ui-config-editing) — and
+   * re-inspects the JWT so `status()` reflects the new expiry at once.
+   */
+  setToken(token: string | undefined): void {
+    this.invalidated = false;
+    this.tokenInfo = undefined;
+    this.token = token;
     if (!this.token) return; // state computes to needs-reauth
     try {
       this.tokenInfo = inspectToken(this.token);

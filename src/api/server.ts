@@ -106,6 +106,23 @@ export async function buildApiServer(ops: SleepBotOperations): Promise<FastifyIn
     }),
   );
 
+  // --- settings: UI-editable config + secrets ------------------------------
+  // All behind the login gate (the onRequest guard covers every /api/* route).
+  app.get("/api/config", h(() => ops.getConfig()));
+  app.put("/api/config", h(async (req) => (await ops.saveConfig(req.body), ops.getConfig())));
+  app.post("/api/config/reset", h(async () => (await ops.resetConfig(), ops.getConfig())));
+  app.get("/api/secrets/sleeper", h(() => ops.getSleeperTokenStatus()));
+  app.put(
+    "/api/secrets/sleeper",
+    h(async (req) => {
+      const token = (req.body as { token?: unknown })?.token;
+      if (typeof token !== "string" || !token.trim()) throw new Error("a non-empty token is required");
+      await ops.setSleeperToken(token);
+      return ops.getSleeperTokenStatus();
+    }),
+  );
+  app.delete("/api/secrets/sleeper", h(async () => (await ops.clearSleeperToken(), ops.getSleeperTokenStatus())));
+
   app.get("/api/audit", h((req) => ops.getAuditLog((req.query as { leagueId?: string }).leagueId)));
   app.get(
     "/api/pending",

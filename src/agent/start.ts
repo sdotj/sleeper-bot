@@ -50,7 +50,15 @@ export function startAgent(ctx: AppContext, ops: SleepBotOperations): AgentHandl
   });
 
   const runner = new AgentRunner({ ctx, ops, notifier });
-  const leagues = () => enabled.map((l) => ({ id: l.id, autonomy: (l.agent?.autonomy ?? "manual") as Autonomy }));
+  // Read config fresh each sweep so autonomy / enabled edits from the settings
+  // panel take effect without a restart (dec.ui-config-editing). (Going from zero
+  // enabled leagues to one still needs a restart — the agent isn't started here
+  // at all in that case; see the early return above.)
+  const leagues = () =>
+    ctx.config
+      .list()
+      .filter((l) => l.agent?.enabled)
+      .map((l) => ({ id: l.id, autonomy: (l.agent?.autonomy ?? "manual") as Autonomy }));
 
   // Webhook + external-cron mode (scale-to-zero, $0) when a public URL + secret
   // are set; otherwise long-poll + in-process scheduler (a VM / always-on host).

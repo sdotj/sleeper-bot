@@ -15,6 +15,7 @@
     "api:start": "node --env-file-if-exists=.env dist/api/index.js",
     "typecheck": "tsc --noEmit",
     "hash-password": "node --import tsx src/gate/hashPassword.ts",
+    "gen-secret-key": "node --import tsx src/crypto/genKey.ts",
     "test": "vitest run"
   },
   "engines": {

@@ -126,4 +126,31 @@ export class SleepBotOperations {
   listPendingActions(leagueId?: string) {
     return this.ctx.pipeline.listPending(leagueId);
   }
+
+  // --- settings: UI-editable config + secrets (dec.ui-config-editing) -------
+
+  /** The current leagues config (source of truth is the store). */
+  getConfig() {
+    return this.ctx.config.config;
+  }
+  /** Validate + persist a new leagues config and adopt it live. Throws on invalid input. */
+  saveConfig(parsed: unknown) {
+    return this.ctx.saveConfig(parsed);
+  }
+  /** Discard the stored config and reseed from the environment. */
+  resetConfig() {
+    return this.ctx.resetConfigToEnv();
+  }
+  /** Status of the Sleeper write token (never returns the token itself). */
+  getSleeperTokenStatus() {
+    return this.ctx.sleeperTokenStatus();
+  }
+  /** Set the Sleeper write token (encrypted at rest); applies live. */
+  setSleeperToken(token: string) {
+    return this.ctx.setSleeperToken(token);
+  }
+  /** Remove the stored Sleeper token; revert to the env seed. */
+  clearSleeperToken() {
+    return this.ctx.clearSleeperToken();
+  }
 }

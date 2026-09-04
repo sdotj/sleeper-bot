@@ -8,10 +8,39 @@ import { configSchema, type LeagueEntry, type SleepBotConfig } from "./schema.js
  * registry, so no tool ever hardcodes a platform or a numeric league id.
  */
 export class ConfigRegistry {
-  private readonly byId: Map<string, LeagueEntry>;
+  private _config!: SleepBotConfig;
+  private byId!: Map<string, LeagueEntry>;
 
-  private constructor(public readonly config: SleepBotConfig) {
+  private constructor(config: SleepBotConfig) {
+    this.applyConfig(config);
+  }
+
+  /** The current validated config (mutable via {@link applyConfig} for live edits). */
+  get config(): SleepBotConfig {
+    return this._config;
+  }
+
+  /**
+   * Adopt a new validated config in place. Every holder of this registry (the
+   * adapters, the agent, the value selection) reads through `get`/`list`/`config`,
+   * so swapping the internals here makes a UI edit take effect without a restart
+   * (dec.ui-config-editing). The store I/O around this lives in the core context.
+   */
+  applyConfig(config: SleepBotConfig): void {
+    this._config = config;
     this.byId = new Map(config.leagues.map((l) => [l.id, l]));
+  }
+
+  /** Validate an arbitrary object as a leagues config, throwing a readable error. */
+  static validate(parsed: unknown, source = "input"): SleepBotConfig {
+    const result = configSchema.safeParse(parsed);
+    if (!result.success) {
+      const issues = result.error.issues
+        .map((i) => `  - ${i.path.join(".")}: ${i.message}`)
+        .join("\n");
+      throw new Error(`invalid config from ${source}:\n${issues}`);
+    }
+    return result.data;
   }
 
   /**
@@ -49,15 +78,7 @@ export class ConfigRegistry {
       throw new Error(`config from ${source} is not valid JSON: ${(err as Error).message}`);
     }
 
-    const result = configSchema.safeParse(parsed);
-    if (!result.success) {
-      const issues = result.error.issues
-        .map((i) => `  - ${i.path.join(".")}: ${i.message}`)
-        .join("\n");
-      throw new Error(`invalid config from ${source}:\n${issues}`);
-    }
-
-    return new ConfigRegistry(result.data);
+    return new ConfigRegistry(ConfigRegistry.validate(parsed, source));
   }
 
   /** All configured leagues (used by the `list_leagues` tool). */

@@ -67,6 +67,30 @@ export interface AuditEvent {
   summary: string;
 }
 
+// Settings: the editable leagues config (mirrors src/config/schema.ts) and the
+// Sleeper write-token status (src/core/context.ts).
+
+export interface LeagueConfig {
+  id: string;
+  platform: "sleeper" | "espn";
+  sleeper?: { leagueId: string; username?: string };
+  valueMode: "redraft" | "dynasty";
+  agent?: { enabled: boolean; autonomy: "manual" | "auto" };
+}
+
+export interface SleepBotConfigDoc {
+  leagues: LeagueConfig[];
+}
+
+export interface SleeperTokenStatus {
+  state: "ok" | "needs-reauth";
+  user?: string;
+  expiresAt?: number;
+  secondsRemaining?: number;
+  source: "store" | "env" | "none";
+  editable: boolean;
+}
+
 export interface Draft {
   draftId: string;
   status: string;
