@@ -1,6 +1,13 @@
 import { useEffect, useState } from "react";
 import { api } from "../../lib/api";
-import type { LeagueConfig, MemoryNote, SleepBotConfigDoc, SleeperTokenStatus } from "../../lib/types";
+import type {
+  AgentStatus,
+  AgentSweepResult,
+  LeagueConfig,
+  MemoryNote,
+  SleepBotConfigDoc,
+  SleeperTokenStatus,
+} from "../../lib/types";
 import { Badge, Button, Card, CardHeader, Select, TextInput } from "../../components/ui";
 
 /**
@@ -12,9 +19,101 @@ export function Settings() {
   return (
     <div className="space-y-5">
       <LeaguesEditor />
+      <AgentPanel />
       <SleeperTokenPanel />
       <MemoryPanel />
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Autonomous manager (manual check)
+// ---------------------------------------------------------------------------
+
+function AgentPanel() {
+  const [status, setStatus] = useState<AgentStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<AgentSweepResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        setStatus(await api.agentStatus());
+      } catch (e) {
+        setError((e as Error).message);
+      }
+    })();
+  }, []);
+
+  async function runCheck() {
+    setBusy(true);
+    setError(null);
+    setResult(null);
+    try {
+      setResult(await api.agentSweep());
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const on = status?.enabled;
+  return (
+    <Card>
+      <CardHeader
+        title="Autonomous manager"
+        right={
+          status && (
+            <Badge variant={on ? "ok" : "neutral"}>{on ? `on · ${status.mode ?? "?"}` : "off"}</Badge>
+          )
+        }
+      />
+      <div className="space-y-3 p-5">
+        <p className="text-sm text-muted">
+          Run a one-off check now: the manager scans your enabled league(s), and if it likes a
+          waiver/add/trade it sends a proposal to Telegram with Approve/Deny buttons. You’ll get a
+          Telegram summary either way — a quick way to confirm the channel is live.
+        </p>
+        {error && <p className="text-sm text-danger">⚠ {error}</p>}
+
+        <div className="flex items-center gap-2">
+          <Button variant="primary" onClick={runCheck} disabled={busy || !on}>
+            {busy ? "Checking… (~30s)" : "Run a check now"}
+          </Button>
+          {busy && <span className="text-xs text-faint">Reasoning over your roster…</span>}
+        </div>
+
+        {!on && status && (
+          <p className="text-sm text-warn">
+            The manager is off. It needs Telegram (bot token + chat id), an Anthropic key, and at least
+            one league with the agent enabled (set that per league above).
+          </p>
+        )}
+
+        {result && !result.ran && <p className="text-sm text-warn">{result.reason}</p>}
+        {result?.ran && (
+          <div className="text-sm text-muted">
+            {result.total ? (
+              <p className="text-ok">
+                Sent {result.total} proposal{result.total === 1 ? "" : "s"} to Telegram. Check your chat.
+              </p>
+            ) : (
+              <p>Swept {result.leagues?.length ?? 0} league(s) — nothing worth proposing right now. (Sent a summary to Telegram.)</p>
+            )}
+            <ul className="mt-1 space-y-0.5 text-xs text-faint">
+              {result.leagues?.map((l) => (
+                <li key={l.id}>
+                  {l.id}: {l.recommended} rec{l.recommended === 1 ? "" : "s"}
+                  {l.skipped ? ` · skipped (${l.skipped})` : ""}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </Card>
   );
 }
 

@@ -124,6 +124,18 @@ export interface MemoryNote {
   source: "user" | "model";
 }
 
+export interface AgentStatus {
+  enabled: boolean;
+  mode: "polling" | "webhook" | null;
+}
+
+export interface AgentSweepResult {
+  ran: boolean;
+  reason?: string;
+  total?: number;
+  leagues?: { id: string; recommended: number; skipped?: string }[];
+}
+
 export interface Draft {
   draftId: string;
   status: string;

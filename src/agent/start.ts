@@ -3,6 +3,13 @@ import type { AppContext, SleepBotOperations } from "../core/index.js";
 import { AgentRunner, type Autonomy } from "./agentRunner.js";
 import { AgentScheduler } from "./scheduler.js";
 
+/** Per-league outcome of a sweep, for the manual-check UI. */
+export interface SweepSummary {
+  leagues: { id: string; recommended: number; skipped?: string }[];
+  /** Total recommendations proposed across all leagues. */
+  total: number;
+}
+
 export interface AgentHandle {
   stop(): void;
   runner: AgentRunner;
@@ -11,7 +18,7 @@ export interface AgentHandle {
   /** "polling" (always-on) or "webhook" (scale-to-zero + external cron). */
   mode: "polling" | "webhook";
   /** Run a sweep of every enabled league now (manual trigger / cron / testing). */
-  sweepAll(): Promise<void>;
+  sweepAll(): Promise<SweepSummary>;
 }
 
 /**
@@ -95,7 +102,12 @@ export function startAgent(ctx: AppContext, ops: SleepBotOperations): AgentHandl
     notifier,
     mode: webhook ? "webhook" : "polling",
     async sweepAll() {
-      for (const { id, autonomy } of leagues()) await runner.sweepLeague(id, autonomy);
+      const results: SweepSummary["leagues"] = [];
+      for (const { id, autonomy } of leagues()) {
+        const r = await runner.sweepLeague(id, autonomy);
+        results.push({ id, recommended: r.recommended, skipped: r.skipped });
+      }
+      return { leagues: results, total: results.reduce((n, r) => n + r.recommended, 0) };
     },
   };
 }

@@ -440,10 +440,10 @@
         {
           "name": "startAgent",
           "kind": "function",
-          "signature": "export_statement:export function startAgent(ctx: AppContext, ops: SleepBotOperations): AgentHandle | null { const enabled = ctx.config.list().filter((l) => l.agent?.enabled); if (!enabled.length) return null; // no league opted into the agent const token = process.env.TELEGRAM_BOT_TOKEN; const chatId = process.env.TELEGRAM_CHAT_ID; if (!token || !chatId) { console.error(\"[agent] league(s) opted in but TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID are unset — agent disabled.\"); return null; } if (!process.env.ANTHROPIC_API_KEY) { console.error(\"[agent] ANTHROPIC_API_KEY is unset — agent disabled.\"); return null; } const telegram = new TelegramClient(token); const notifier = new Notifier({ telegram, store: ctx.store, chatId, perform: async (leagueId, kind, payload, opts) => { try { const a = await ctx.pipeline.perform(leagueId, kind, payload, \"user\", opts); return { ok: a.status === \"executed\", message: a.result?.message ?? (a.verdict.blockedReasons.join(\"; \") || \"done\") }; } catch (err) { return { ok: false, message: (err as Error).message }; } }, }); const runner = new AgentRunner({ ctx, ops, notifier }); // Read config fresh each sweep so autonomy / enabled edits from the settings // panel take effect without a restart (dec.ui-config-editing). (Going from zero // enabled leagues to one still needs a restart — the agent isn't started here // at all in that case; see the early return above.) const leagues = () => ctx.config .list() .filter((l) => l.agent?.enabled) .map((l) => ({ id: l.id, autonomy: (l.agent?.autonomy ?? \"manual\") as Autonomy })); // Webhook + external-cron mode (scale-to-zero, $0) when a public URL + secret // are set; otherwise long-poll + in-process scheduler (a VM / always-on host). const publicUrl = process.env.SLEEPBOT_PUBLIC_URL?.replace(/\\/$/, \"\"); const secret = process.env.SLEEPBOT_INTERNAL_SECRET; const webhook = Boolean(publicUrl && secret); const scheduler = new AgentScheduler({ runner, leagues, intervalMs: Math.max(5, Number(process.env.SLEEPBOT_AGENT_INTERVAL_MIN ?? 360)) * 60_000, }); if (webhook) { void telegram .setWebhook(`${publicUrl}/internal/telegram`, secret!) .then(() => console.error(`[agent] enabled for ${enabled.map((l) => l.id).join(\", \")}; Telegram webhook set; sweeps via Cloud Scheduler -> /internal/sweep.`)) .catch((e) => console.error(`[agent] setWebhook failed: ${(e as Error).message}`)); } else { if (process.env.SLEEPBOT_PUBLIC_URL && !secret) { console.error(\"[agent] SLEEPBOT_PUBLIC_URL set but SLEEPBOT_INTERNAL_SECRET missing — using polling instead.\"); } void telegram.deleteWebhook().catch(() => {}); // ensure long-poll isn't blocked by a stale webhook notifier.start(); scheduler.start(); console.error(`[agent] enabled for ${enabled.map((l) => l.id).join(\", \")}; Telegram long-poll + in-process scheduler on.`); } return { stop() { scheduler.stop(); notifier.stop(); }, runner, notifier, mode: webhook ? \"webhook\" : \"polling\", async sweepAll() { for (const { id, autonomy } of leagues()) await runner.sweepLeague(id, autonomy); }, }; }",
+          "signature": "export_statement:export function startAgent(ctx: AppContext, ops: SleepBotOperations): AgentHandle | null { const enabled = ctx.config.list().filter((l) => l.agent?.enabled); if (!enabled.length) return null; // no league opted into the agent const token = process.env.TELEGRAM_BOT_TOKEN; const chatId = process.env.TELEGRAM_CHAT_ID; if (!token || !chatId) { console.error(\"[agent] league(s) opted in but TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID are unset — agent disabled.\"); return null; } if (!process.env.ANTHROPIC_API_KEY) { console.error(\"[agent] ANTHROPIC_API_KEY is unset — agent disabled.\"); return null; } const telegram = new TelegramClient(token); const notifier = new Notifier({ telegram, store: ctx.store, chatId, perform: async (leagueId, kind, payload, opts) => { try { const a = await ctx.pipeline.perform(leagueId, kind, payload, \"user\", opts); return { ok: a.status === \"executed\", message: a.result?.message ?? (a.verdict.blockedReasons.join(\"; \") || \"done\") }; } catch (err) { return { ok: false, message: (err as Error).message }; } }, }); const runner = new AgentRunner({ ctx, ops, notifier }); // Read config fresh each sweep so autonomy / enabled edits from the settings // panel take effect without a restart (dec.ui-config-editing). (Going from zero // enabled leagues to one still needs a restart — the agent isn't started here // at all in that case; see the early return above.) const leagues = () => ctx.config .list() .filter((l) => l.agent?.enabled) .map((l) => ({ id: l.id, autonomy: (l.agent?.autonomy ?? \"manual\") as Autonomy })); // Webhook + external-cron mode (scale-to-zero, $0) when a public URL + secret // are set; otherwise long-poll + in-process scheduler (a VM / always-on host). const publicUrl = process.env.SLEEPBOT_PUBLIC_URL?.replace(/\\/$/, \"\"); const secret = process.env.SLEEPBOT_INTERNAL_SECRET; const webhook = Boolean(publicUrl && secret); const scheduler = new AgentScheduler({ runner, leagues, intervalMs: Math.max(5, Number(process.env.SLEEPBOT_AGENT_INTERVAL_MIN ?? 360)) * 60_000, }); if (webhook) { void telegram .setWebhook(`${publicUrl}/internal/telegram`, secret!) .then(() => console.error(`[agent] enabled for ${enabled.map((l) => l.id).join(\", \")}; Telegram webhook set; sweeps via Cloud Scheduler -> /internal/sweep.`)) .catch((e) => console.error(`[agent] setWebhook failed: ${(e as Error).message}`)); } else { if (process.env.SLEEPBOT_PUBLIC_URL && !secret) { console.error(\"[agent] SLEEPBOT_PUBLIC_URL set but SLEEPBOT_INTERNAL_SECRET missing — using polling instead.\"); } void telegram.deleteWebhook().catch(() => {}); // ensure long-poll isn't blocked by a stale webhook notifier.start(); scheduler.start(); console.error(`[agent] enabled for ${enabled.map((l) => l.id).join(\", \")}; Telegram long-poll + in-process scheduler on.`); } return { stop() { scheduler.stop(); notifier.stop(); }, runner, notifier, mode: webhook ? \"webhook\" : \"polling\", async sweepAll() { const results: SweepSummary[\"leagues\"] = []; for (const { id, autonomy } of leagues()) { const r = await runner.sweepLeague(id, autonomy); results.push({ id, recommended: r.recommended, skipped: r.skipped }); } return { leagues: results, total: results.reduce((n, r) => n + r.recommended, 0) }; }, }; }",
           "file": "src/agent/start.ts",
-          "line": 22,
-          "end_line": 101
+          "line": 29,
+          "end_line": 113
         },
         {
           "name": "AgentDeps",
@@ -456,10 +456,10 @@
         {
           "name": "AgentHandle",
           "kind": "interface",
-          "signature": "export_statement:export interface AgentHandle { stop(): void; runner: AgentRunner; /** The notifier — the webhook route dispatches Telegram updates through it. */ notifier: Notifier; /** \"polling\" (always-on) or \"webhook\" (scale-to-zero + external cron). */ mode: \"polling\" | \"webhook\"; /** Run a sweep of every enabled league now (manual trigger / cron / testing). */ sweepAll(): Promise<void>; }",
+          "signature": "export_statement:export interface AgentHandle { stop(): void; runner: AgentRunner; /** The notifier — the webhook route dispatches Telegram updates through it. */ notifier: Notifier; /** \"polling\" (always-on) or \"webhook\" (scale-to-zero + external cron). */ mode: \"polling\" | \"webhook\"; /** Run a sweep of every enabled league now (manual trigger / cron / testing). */ sweepAll(): Promise<SweepSummary>; }",
           "file": "src/agent/start.ts",
-          "line": 6,
-          "end_line": 15
+          "line": 13,
+          "end_line": 22
         },
         {
           "name": "Recommendation",
@@ -468,6 +468,14 @@
           "file": "src/agent/agentTools.ts",
           "line": 45,
           "end_line": 49
+        },
+        {
+          "name": "SweepSummary",
+          "kind": "interface",
+          "signature": "export_statement:export interface SweepSummary { leagues: { id: string; recommended: number; skipped?: string }[]; /** Total recommendations proposed across all leagues. */ total: number; }",
+          "file": "src/agent/start.ts",
+          "line": 7,
+          "end_line": 11
         },
         {
           "name": "Autonomy",
@@ -1286,12 +1294,12 @@
           "end_line": 97
         },
         {
-          "name": "export const api = {\n  leagues: () => get<League[]>(\"/api/leagues\"),\n  myRoster: (id: string) => get<Roster | null>(`/api/leagues/${id}/my-roster`),\n  standings: (id: string) => get<StandingRow[]>(`/api/leagues/${id}/standings`),\n  matchups: (id: string, week?: number) =>\n    get<Matchup[]>(`/api/leagues/${id}/matchups${week ? `?week=${week}` : \"\"}`),\n  auth: (id: string) => get<AuthStatus>(`/api/leagues/${id}/auth`),\n  audit: (id: string) => get<AuditEvent[]>(`/api/audit?leagueId=${encodeURIComponent(id)}`),\n  drafts: (id: string) => get<Draft[]>(`/api/leagues/${id}/drafts`),\n  draftBoard: (id: string, draftId: string, yourRosterId?: number) =>\n    get<DraftBoard>(\n      `/api/leagues/${id}/drafts/${draftId}/board${yourRosterId != null ? `?yourRosterId=${yourRosterId}` : \"\"}`,\n    ),\n  draftRecs: (\n    id: string,\n    draftId: string,\n    o: { rosterId?: number; position?: string; limit?: number } = {},\n  ) => {\n    const q = new URLSearchParams();\n    if (o.rosterId != null) q.set(\"rosterId\", String(o.rosterId));\n    if (o.position) q.set(\"position\", o.position);\n    if (o.limit != null) q.set(\"limit\", String(o.limit));\n    return get<DraftRecommendation[]>(`/api/leagues/${id}/drafts/${draftId}/recommendations?${q}`);\n  },\n\n  // --- settings ---\n  config: () => get<SleepBotConfigDoc>(\"/api/config\"),\n  saveConfig: (config: SleepBotConfigDoc) => send<SleepBotConfigDoc>(\"PUT\", \"/api/config\", config),\n  resetConfig: () => send<SleepBotConfigDoc>(\"POST\", \"/api/config/reset\"),\n  sleeperToken: () => get<SleeperTokenStatus>(\"/api/secrets/sleeper\"),\n  setSleeperToken: (token: string) =>\n    send<SleeperTokenStatus>(\"PUT\", \"/api/secrets/sleeper\", { token }),\n  clearSleeperToken: () => send<SleeperTokenStatus>(\"DELETE\", \"/api/secrets/sleeper\"),\n\n  // --- chat history ---\n  conversations: () => get<ConversationSummary[]>(\"/api/conversations\"),\n  conversation: (id: string) => get<Conversation>(`/api/conversations/${id}`),\n  sendChat: (message: string, conversationId?: string) =>\n    send<{ conversationId: string; reply: string; toolCalls: string[] }>(\"POST\", \"/api/chat\", {\n      message,\n      conversationId,\n    }),\n  renameConversation: (id: string, title: string) =>\n    send<Conversation>(\"PATCH\", `/api/conversations/${id}`, { title }),\n  deleteConversation: (id: string) => send<{ ok: true }>(\"DELETE\", `/api/conversations/${id}`),\n\n  // --- long-term memory ---\n  memory: () => get<MemoryNote[]>(\"/api/memory\"),\n  addMemory: (text: string) => send<MemoryNote>(\"POST\", \"/api/memory\", { text }),\n  deleteMemory: (id: string) => send<{ ok: true }>(\"DELETE\", `/api/memory/${id}`),\n};",
+          "name": "export const api = {\n  leagues: () => get<League[]>(\"/api/leagues\"),\n  myRoster: (id: string) => get<Roster | null>(`/api/leagues/${id}/my-roster`),\n  standings: (id: string) => get<StandingRow[]>(`/api/leagues/${id}/standings`),\n  matchups: (id: string, week?: number) =>\n    get<Matchup[]>(`/api/leagues/${id}/matchups${week ? `?week=${week}` : \"\"}`),\n  auth: (id: string) => get<AuthStatus>(`/api/leagues/${id}/auth`),\n  audit: (id: string) => get<AuditEvent[]>(`/api/audit?leagueId=${encodeURIComponent(id)}`),\n  drafts: (id: string) => get<Draft[]>(`/api/leagues/${id}/drafts`),\n  draftBoard: (id: string, draftId: string, yourRosterId?: number) =>\n    get<DraftBoard>(\n      `/api/leagues/${id}/drafts/${draftId}/board${yourRosterId != null ? `?yourRosterId=${yourRosterId}` : \"\"}`,\n    ),\n  draftRecs: (\n    id: string,\n    draftId: string,\n    o: { rosterId?: number; position?: string; limit?: number } = {},\n  ) => {\n    const q = new URLSearchParams();\n    if (o.rosterId != null) q.set(\"rosterId\", String(o.rosterId));\n    if (o.position) q.set(\"position\", o.position);\n    if (o.limit != null) q.set(\"limit\", String(o.limit));\n    return get<DraftRecommendation[]>(`/api/leagues/${id}/drafts/${draftId}/recommendations?${q}`);\n  },\n\n  // --- settings ---\n  config: () => get<SleepBotConfigDoc>(\"/api/config\"),\n  saveConfig: (config: SleepBotConfigDoc) => send<SleepBotConfigDoc>(\"PUT\", \"/api/config\", config),\n  resetConfig: () => send<SleepBotConfigDoc>(\"POST\", \"/api/config/reset\"),\n  sleeperToken: () => get<SleeperTokenStatus>(\"/api/secrets/sleeper\"),\n  setSleeperToken: (token: string) =>\n    send<SleeperTokenStatus>(\"PUT\", \"/api/secrets/sleeper\", { token }),\n  clearSleeperToken: () => send<SleeperTokenStatus>(\"DELETE\", \"/api/secrets/sleeper\"),\n\n  // --- chat history ---\n  conversations: () => get<ConversationSummary[]>(\"/api/conversations\"),\n  conversation: (id: string) => get<Conversation>(`/api/conversations/${id}`),\n  sendChat: (message: string, conversationId?: string) =>\n    send<{ conversationId: string; reply: string; toolCalls: string[] }>(\"POST\", \"/api/chat\", {\n      message,\n      conversationId,\n    }),\n  renameConversation: (id: string, title: string) =>\n    send<Conversation>(\"PATCH\", `/api/conversations/${id}`, { title }),\n  deleteConversation: (id: string) => send<{ ok: true }>(\"DELETE\", `/api/conversations/${id}`),\n\n  // --- long-term memory ---\n  memory: () => get<MemoryNote[]>(\"/api/memory\"),\n  addMemory: (text: string) => send<MemoryNote>(\"POST\", \"/api/memory\", { text }),\n  deleteMemory: (id: string) => send<{ ok: true }>(\"DELETE\", `/api/memory/${id}`),\n\n  // --- autonomous manager ---\n  agentStatus: () => get<AgentStatus>(\"/api/agent/status\"),\n  agentSweep: () => send<AgentSweepResult>(\"POST\", \"/api/agent/sweep\"),\n};",
           "kind": "variable",
-          "signature": "export_statement:export const api = { leagues: () => get<League[]>(\"/api/leagues\"), myRoster: (id: string) => get<Roster | null>(`/api/leagues/${id}/my-roster`), standings: (id: string) => get<StandingRow[]>(`/api/leagues/${id}/standings`), matchups: (id: string, week?: number) => get<Matchup[]>(`/api/leagues/${id}/matchups${week ? `?week=${week}` : \"\"}`), auth: (id: string) => get<AuthStatus>(`/api/leagues/${id}/auth`), audit: (id: string) => get<AuditEvent[]>(`/api/audit?leagueId=${encodeURIComponent(id)}`), drafts: (id: string) => get<Draft[]>(`/api/leagues/${id}/drafts`), draftBoard: (id: string, draftId: string, yourRosterId?: number) => get<DraftBoard>( `/api/leagues/${id}/drafts/${draftId}/board${yourRosterId != null ? `?yourRosterId=${yourRosterId}` : \"\"}`, ), draftRecs: ( id: string, draftId: string, o: { rosterId?: number; position?: string; limit?: number } = {}, ) => { const q = new URLSearchParams(); if (o.rosterId != null) q.set(\"rosterId\", String(o.rosterId)); if (o.position) q.set(\"position\", o.position); if (o.limit != null) q.set(\"limit\", String(o.limit)); return get<DraftRecommendation[]>(`/api/leagues/${id}/drafts/${draftId}/recommendations?${q}`); }, // --- settings --- config: () => get<SleepBotConfigDoc>(\"/api/config\"), saveConfig: (config: SleepBotConfigDoc) => send<SleepBotConfigDoc>(\"PUT\", \"/api/config\", config), resetConfig: () => send<SleepBotConfigDoc>(\"POST\", \"/api/config/reset\"), sleeperToken: () => get<SleeperTokenStatus>(\"/api/secrets/sleeper\"), setSleeperToken: (token: string) => send<SleeperTokenStatus>(\"PUT\", \"/api/secrets/sleeper\", { token }), clearSleeperToken: () => send<SleeperTokenStatus>(\"DELETE\", \"/api/secrets/sleeper\"), // --- chat history --- conversations: () => get<ConversationSummary[]>(\"/api/conversations\"), conversation: (id: string) => get<Conversation>(`/api/conversations/${id}`), sendChat: (message: string, conversationId?: string) => send<{ conversationId: string; reply: string; toolCalls: string[] }>(\"POST\", \"/api/chat\", { message, conversationId, }), renameConversation: (id: string, title: string) => send<Conversation>(\"PATCH\", `/api/conversations/${id}`, { title }), deleteConversation: (id: string) => send<{ ok: true }>(\"DELETE\", `/api/conversations/${id}`), // --- long-term memory --- memory: () => get<MemoryNote[]>(\"/api/memory\"), addMemory: (text: string) => send<MemoryNote>(\"POST\", \"/api/memory\", { text }), deleteMemory: (id: string) => send<{ ok: true }>(\"DELETE\", `/api/memory/${id}`), };",
+          "signature": "export_statement:export const api = { leagues: () => get<League[]>(\"/api/leagues\"), myRoster: (id: string) => get<Roster | null>(`/api/leagues/${id}/my-roster`), standings: (id: string) => get<StandingRow[]>(`/api/leagues/${id}/standings`), matchups: (id: string, week?: number) => get<Matchup[]>(`/api/leagues/${id}/matchups${week ? `?week=${week}` : \"\"}`), auth: (id: string) => get<AuthStatus>(`/api/leagues/${id}/auth`), audit: (id: string) => get<AuditEvent[]>(`/api/audit?leagueId=${encodeURIComponent(id)}`), drafts: (id: string) => get<Draft[]>(`/api/leagues/${id}/drafts`), draftBoard: (id: string, draftId: string, yourRosterId?: number) => get<DraftBoard>( `/api/leagues/${id}/drafts/${draftId}/board${yourRosterId != null ? `?yourRosterId=${yourRosterId}` : \"\"}`, ), draftRecs: ( id: string, draftId: string, o: { rosterId?: number; position?: string; limit?: number } = {}, ) => { const q = new URLSearchParams(); if (o.rosterId != null) q.set(\"rosterId\", String(o.rosterId)); if (o.position) q.set(\"position\", o.position); if (o.limit != null) q.set(\"limit\", String(o.limit)); return get<DraftRecommendation[]>(`/api/leagues/${id}/drafts/${draftId}/recommendations?${q}`); }, // --- settings --- config: () => get<SleepBotConfigDoc>(\"/api/config\"), saveConfig: (config: SleepBotConfigDoc) => send<SleepBotConfigDoc>(\"PUT\", \"/api/config\", config), resetConfig: () => send<SleepBotConfigDoc>(\"POST\", \"/api/config/reset\"), sleeperToken: () => get<SleeperTokenStatus>(\"/api/secrets/sleeper\"), setSleeperToken: (token: string) => send<SleeperTokenStatus>(\"PUT\", \"/api/secrets/sleeper\", { token }), clearSleeperToken: () => send<SleeperTokenStatus>(\"DELETE\", \"/api/secrets/sleeper\"), // --- chat history --- conversations: () => get<ConversationSummary[]>(\"/api/conversations\"), conversation: (id: string) => get<Conversation>(`/api/conversations/${id}`), sendChat: (message: string, conversationId?: string) => send<{ conversationId: string; reply: string; toolCalls: string[] }>(\"POST\", \"/api/chat\", { message, conversationId, }), renameConversation: (id: string, title: string) => send<Conversation>(\"PATCH\", `/api/conversations/${id}`, { title }), deleteConversation: (id: string) => send<{ ok: true }>(\"DELETE\", `/api/conversations/${id}`), // --- long-term memory --- memory: () => get<MemoryNote[]>(\"/api/memory\"), addMemory: (text: string) => send<MemoryNote>(\"POST\", \"/api/memory\", { text }), deleteMemory: (id: string) => send<{ ok: true }>(\"DELETE\", `/api/memory/${id}`), // --- autonomous manager --- agentStatus: () => get<AgentStatus>(\"/api/agent/status\"), agentSweep: () => send<AgentSweepResult>(\"POST\", \"/api/agent/sweep\"), };",
           "file": "web/src/lib/api.ts",
-          "line": 50,
-          "end_line": 100
+          "line": 52,
+          "end_line": 106
         },
         {
           "name": "export default defineConfig({\n  plugins: [react(), tailwindcss()],\n  server: {\n    port: 5173,\n    proxy: { \"/api\": process.env.SLEEPBOT_API ?? \"http://127.0.0.1:8787\" },\n  },\n});",
@@ -1358,14 +1366,6 @@
           "end_line": 59
         },
         {
-          "name": "Settings",
-          "kind": "function",
-          "signature": "export_statement:export function Settings() { return ( <div className=\"space-y-5\"> <LeaguesEditor /> <SleeperTokenPanel /> <MemoryPanel /> </div> ); }",
-          "file": "web/src/features/settings/Settings.tsx",
-          "line": 11,
-          "end_line": 19
-        },
-        {
           "name": "Spinner",
           "kind": "function",
           "signature": "export_statement:export function Spinner({ className }: { className?: string }) { return ( <span className={cn( \"inline-block h-4 w-4 animate-spin rounded-full border-2 border-border-strong border-t-accent\", className, )} /> ); }",
@@ -1426,8 +1426,8 @@
           "kind": "function",
           "signature": "export_statement:export function useAsync<T>(fn: () => Promise<T>, deps: unknown[]) { const [state, setState] = useState<{ data?: T; error?: string; loading: boolean }>({ loading: true, }); useEffect(() => { let live = true; // Keep any previous data visible while refetching (e.g. draft polling) so // the UI doesn't flash to a spinner on every refresh. setState((s) => ({ data: s.data, loading: true })); fn() .then((data) => live && setState({ data, loading: false })) .catch((err) => live && setState((s) => ({ data: s.data, error: (err as Error).message, loading: false }))); return () => { live = false; }; // eslint-disable-next-line react-hooks/exhaustive-deps }, deps); return state; }",
           "file": "web/src/lib/api.ts",
-          "line": 103,
-          "end_line": 121
+          "line": 109,
+          "end_line": 127
         },
         {
           "name": "useAuth",
@@ -1436,6 +1436,22 @@
           "file": "web/src/lib/auth.ts",
           "line": 108,
           "end_line": 110
+        },
+        {
+          "name": "AgentStatus",
+          "kind": "interface",
+          "signature": "export_statement:export interface AgentStatus { enabled: boolean; mode: \"polling\" | \"webhook\" | null; }",
+          "file": "web/src/lib/types.ts",
+          "line": 127,
+          "end_line": 130
+        },
+        {
+          "name": "AgentSweepResult",
+          "kind": "interface",
+          "signature": "export_statement:export interface AgentSweepResult { ran: boolean; reason?: string; total?: number; leagues?: { id: string; recommended: number; skipped?: string }[]; }",
+          "file": "web/src/lib/types.ts",
+          "line": 132,
+          "end_line": 137
         },
         {
           "name": "AsyncState",
@@ -1498,16 +1514,16 @@
           "kind": "interface",
           "signature": "export_statement:export interface Draft { draftId: string; status: string; type: string; season: string; rounds: number; teams: number; slotToRosterId: Record<string, number>; starterSlots: Record<string, number>; }",
           "file": "web/src/lib/types.ts",
-          "line": 127,
-          "end_line": 136
+          "line": 139,
+          "end_line": 148
         },
         {
           "name": "DraftBoard",
           "kind": "interface",
           "signature": "export_statement:export interface DraftBoard { draft: Draft; pickCount: number; onTheClock: { pickNo: number; round: number; slot: number; rosterId: number | null } | null; recentPicks: DraftPick[]; yourNextPickNo: number | null; }",
           "file": "web/src/lib/types.ts",
-          "line": 148,
-          "end_line": 154
+          "line": 160,
+          "end_line": 166
         },
         {
           "name": "DraftContext",
@@ -1522,16 +1538,16 @@
           "kind": "interface",
           "signature": "export_statement:export interface DraftPick { round: number; pickNo: number; slot: number; rosterId: number | null; playerName: string; position: string; team: string | null; }",
           "file": "web/src/lib/types.ts",
-          "line": 138,
-          "end_line": 146
+          "line": 150,
+          "end_line": 158
         },
         {
           "name": "DraftRecommendation",
           "kind": "interface",
           "signature": "export_statement:export interface DraftRecommendation { playerId: string; name: string; position: string; team: string | null; value: number; reason: string; }",
           "file": "web/src/lib/types.ts",
-          "line": 156,
-          "end_line": 163
+          "line": 168,
+          "end_line": 175
         },
         {
           "name": "League",

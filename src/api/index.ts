@@ -43,6 +43,30 @@ async function main(): Promise<void> {
     });
   }
 
+  // Manual controls for the GUI (gate-protected like every other /api/* route).
+  // These work whether the agent runs in polling or webhook mode; when it's off,
+  // they report why so the settings panel can explain it.
+  app.get("/api/agent/status", async () => ({ enabled: !!agent, mode: agent?.mode ?? null }));
+  app.post("/api/agent/sweep", async () => {
+    if (!agent) {
+      return {
+        ran: false,
+        reason:
+          "Autonomous manager is off — it needs TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, ANTHROPIC_API_KEY, and at least one league with the agent enabled.",
+      };
+    }
+    const summary = await agent.sweepAll();
+    // A manual check always pings Telegram so you can confirm the channel is live,
+    // even when there's nothing worth proposing. Any actual proposals were already
+    // sent (with Approve/Deny buttons) during the sweep.
+    const line =
+      summary.total > 0
+        ? `🔎 Manual check: ${summary.total} proposal(s) across ${summary.leagues.length} league(s) — see the message(s) above.`
+        : `🔎 Manual check: swept ${summary.leagues.length} league(s), nothing worth proposing right now.`;
+    await agent.notifier.info(line).catch(() => {});
+    return { ran: true, ...summary };
+  });
+
   const port = Number(process.env.PORT ?? 8787);
   const host = process.env.HOST ?? "127.0.0.1";
   await app.listen({ port, host });

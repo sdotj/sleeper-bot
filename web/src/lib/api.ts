@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { authHeaders, getToken, signalAuthRequired } from "./auth";
 import type {
+  AgentStatus,
+  AgentSweepResult,
   AuditEvent,
   AuthStatus,
   Conversation,
@@ -97,6 +99,10 @@ export const api = {
   memory: () => get<MemoryNote[]>("/api/memory"),
   addMemory: (text: string) => send<MemoryNote>("POST", "/api/memory", { text }),
   deleteMemory: (id: string) => send<{ ok: true }>("DELETE", `/api/memory/${id}`),
+
+  // --- autonomous manager ---
+  agentStatus: () => get<AgentStatus>("/api/agent/status"),
+  agentSweep: () => send<AgentSweepResult>("POST", "/api/agent/sweep"),
 };
 
 /** Tiny async-data hook: re-runs when any dep changes. */
