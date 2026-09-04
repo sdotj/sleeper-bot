@@ -83,6 +83,49 @@ primary_region = "iad"
   timeout = "2s"
 ```
 
+## Google Cloud Run (scale-to-zero, ~$0)
+
+Cloud Run scales to zero, so run the agent in **webhook + external-cron** mode
+(no always-on instance, no CPU-always-allocated bill):
+
+- Telegram taps POST to `/internal/telegram` (waking the service from zero).
+- **Cloud Scheduler** (free tier: 3 jobs) POSTs `/internal/sweep` on a cron.
+
+Both `/internal/*` routes require `SLEEPBOT_INTERNAL_SECRET`. The service must be
+`--allow-unauthenticated` (Telegram webhooks can't send Google OIDC), so those
+routes are protected by that app secret instead.
+
+```bash
+# 1. Put secrets in Secret Manager (incl. SLEEPBOT_CONFIG_JSON — avoids
+#    comma-escaping in --set-env-vars, and DATABASE_URL from Cloud SQL/Neon):
+printf '%s' "$ANTHROPIC_API_KEY" | gcloud secrets create anthropic-key --data-file=-
+# ...repeat for sleeper-token, tg-bot-token, database-url, internal-secret, config-json
+
+# 2. First deploy (URL is only known after this):
+gcloud run deploy sleepbot --source . --region us-central1 --allow-unauthenticated \
+  --set-secrets ANTHROPIC_API_KEY=anthropic-key:latest,TELEGRAM_BOT_TOKEN=tg-bot-token:latest,DATABASE_URL=database-url:latest,SLEEPBOT_INTERNAL_SECRET=internal-secret:latest,SLEEPBOT_CONFIG_JSON=config-json:latest \
+  --set-env-vars TELEGRAM_CHAT_ID=123456789,SLEEPBOT_KTC_MODE=oqb
+
+# 3. Re-deploy with the now-known URL so the agent registers its webhook:
+gcloud run services update sleepbot --region us-central1 \
+  --update-env-vars SLEEPBOT_PUBLIC_URL=https://sleepbot-xxxx.run.app
+
+# 4. Cron the sweep (every 6h) — Bearer secret matches SLEEPBOT_INTERNAL_SECRET:
+gcloud scheduler jobs create http sleepbot-sweep --location us-central1 \
+  --schedule="0 */6 * * *" --http-method=POST \
+  --uri="https://sleepbot-xxxx.run.app/internal/sweep" \
+  --headers="Authorization=Bearer <SLEEPBOT_INTERNAL_SECRET>"
+```
+
+Leave `min-instances` at 0 and CPU throttling on (the defaults) — the webhook
+and cron wake the service on demand. `SLEEPER_TOKEN` (writes) can be added as a
+secret whenever you're ready.
+
+> ⚠️ `--allow-unauthenticated` also exposes the GUI + `/api/chat` publicly. The
+> `/internal/*` routes are secret-gated, but the chat endpoint (which spends your
+> Anthropic budget) is not — put the service behind IAP / an auth proxy, or add
+> app-level auth, before sharing the URL.
+
 ## Any other Docker host
 
 Build and push the image to your registry, provision a managed Postgres

@@ -20,8 +20,25 @@ async function main(): Promise<void> {
   // TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID / ANTHROPIC_API_KEY are set).
   const agent = startAgent(ctx, ops);
   if (agent) {
-    app.post("/api/agent/sweep", async () => {
+    const secret = process.env.SLEEPBOT_INTERNAL_SECRET;
+
+    // Cloud Scheduler (or a manual curl) triggers a sweep. Bearer/secret auth so
+    // the endpoint isn't openly callable. Requires SLEEPBOT_INTERNAL_SECRET.
+    app.post("/internal/sweep", async (req, reply) => {
+      const h = req.headers;
+      const ok = !!secret && (h["x-sleepbot-secret"] === secret || h.authorization === `Bearer ${secret}`);
+      if (!ok) return reply.status(401).send({ error: "unauthorized" });
       await agent.sweepAll();
+      return { ok: true };
+    });
+
+    // Telegram webhook (scale-to-zero): each tap POSTs here and wakes the service.
+    // Authenticated by the secret token Telegram echoes back.
+    app.post("/internal/telegram", async (req, reply) => {
+      if (!secret || req.headers["x-telegram-bot-api-secret-token"] !== secret) {
+        return reply.status(401).send({ error: "unauthorized" });
+      }
+      await agent.notifier.handleUpdate(req.body as never).catch(() => {});
       return { ok: true };
     });
   }

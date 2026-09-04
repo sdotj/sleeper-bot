@@ -6,7 +6,11 @@ import { AgentScheduler } from "./scheduler.js";
 export interface AgentHandle {
   stop(): void;
   runner: AgentRunner;
-  /** Run a sweep of every enabled league now (manual trigger / testing). */
+  /** The notifier — the webhook route dispatches Telegram updates through it. */
+  notifier: Notifier;
+  /** "polling" (always-on) or "webhook" (scale-to-zero + external cron). */
+  mode: "polling" | "webhook";
+  /** Run a sweep of every enabled league now (manual trigger / cron / testing). */
   sweepAll(): Promise<void>;
 }
 
@@ -47,14 +51,32 @@ export function startAgent(ctx: AppContext, ops: SleepBotOperations): AgentHandl
 
   const runner = new AgentRunner({ ctx, ops, notifier });
   const leagues = () => enabled.map((l) => ({ id: l.id, autonomy: (l.agent?.autonomy ?? "manual") as Autonomy }));
-  const intervalMin = Math.max(5, Number(process.env.SLEEPBOT_AGENT_INTERVAL_MIN ?? 360));
-  const scheduler = new AgentScheduler({ runner, leagues, intervalMs: intervalMin * 60_000 });
 
-  notifier.start();
-  scheduler.start();
-  console.error(
-    `[agent] enabled for ${enabled.map((l) => l.id).join(", ")}; sweep every ${intervalMin}min; Telegram polling on.`,
-  );
+  // Webhook + external-cron mode (scale-to-zero, $0) when a public URL + secret
+  // are set; otherwise long-poll + in-process scheduler (a VM / always-on host).
+  const publicUrl = process.env.SLEEPBOT_PUBLIC_URL?.replace(/\/$/, "");
+  const secret = process.env.SLEEPBOT_INTERNAL_SECRET;
+  const webhook = Boolean(publicUrl && secret);
+  const scheduler = new AgentScheduler({
+    runner,
+    leagues,
+    intervalMs: Math.max(5, Number(process.env.SLEEPBOT_AGENT_INTERVAL_MIN ?? 360)) * 60_000,
+  });
+
+  if (webhook) {
+    void telegram
+      .setWebhook(`${publicUrl}/internal/telegram`, secret!)
+      .then(() => console.error(`[agent] enabled for ${enabled.map((l) => l.id).join(", ")}; Telegram webhook set; sweeps via Cloud Scheduler -> /internal/sweep.`))
+      .catch((e) => console.error(`[agent] setWebhook failed: ${(e as Error).message}`));
+  } else {
+    if (process.env.SLEEPBOT_PUBLIC_URL && !secret) {
+      console.error("[agent] SLEEPBOT_PUBLIC_URL set but SLEEPBOT_INTERNAL_SECRET missing — using polling instead.");
+    }
+    void telegram.deleteWebhook().catch(() => {}); // ensure long-poll isn't blocked by a stale webhook
+    notifier.start();
+    scheduler.start();
+    console.error(`[agent] enabled for ${enabled.map((l) => l.id).join(", ")}; Telegram long-poll + in-process scheduler on.`);
+  }
 
   return {
     stop() {
@@ -62,6 +84,8 @@ export function startAgent(ctx: AppContext, ops: SleepBotOperations): AgentHandl
       notifier.stop();
     },
     runner,
+    notifier,
+    mode: webhook ? "webhook" : "polling",
     async sweepAll() {
       for (const { id, autonomy } of leagues()) await runner.sweepLeague(id, autonomy);
     },

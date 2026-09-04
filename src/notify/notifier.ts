@@ -1,7 +1,7 @@
 import type { WritePayload } from "../adapters/LeagueAdapter.js";
 import type { Store } from "../audit/index.js";
 import type { ActionKind } from "../rules/index.js";
-import { TelegramClient, type InlineButton } from "./telegramClient.js";
+import { TelegramClient, type InlineButton, type TelegramUpdate } from "./telegramClient.js";
 
 /** How an awaiting proposal is decided by a tap. */
 export type ProposalMode = "approve" | "override";
@@ -128,15 +128,20 @@ export class Notifier {
     await this.deps.telegram.answerCallbackQuery(callbackQueryId);
   }
 
+  /** Process one update (from webhook or long-poll); honors the allowed chat. */
+  async handleUpdate(update: TelegramUpdate): Promise<void> {
+    const cq = update.callback_query;
+    if (!cq?.data) return;
+    if (cq.message && String(cq.message.chat.id) !== String(this.deps.chatId)) return;
+    await this.handleCallback(cq.data, cq.id);
+  }
+
   /** One long-poll cycle: fetch updates, dispatch taps from the allowed chat. */
   async pollOnce(): Promise<void> {
     const updates = await this.deps.telegram.getUpdates(this.offset);
     for (const u of updates) {
       this.offset = Math.max(this.offset, u.update_id + 1);
-      const cq = u.callback_query;
-      if (!cq?.data) continue;
-      if (cq.message && String(cq.message.chat.id) !== String(this.deps.chatId)) continue;
-      await this.handleCallback(cq.data, cq.id);
+      await this.handleUpdate(u);
     }
   }
 

@@ -47,6 +47,17 @@ describe("TelegramClient", () => {
     expect(body.chat_id).toBe("555");
     expect(body.reply_markup.inline_keyboard[0][0].callback_data).toBe("ok:1");
   });
+
+  it("registers a webhook with a secret token", async () => {
+    let sent: any;
+    const fetchFn: TgFetch = async (url, init) => {
+      sent = { url, body: JSON.parse(init.body) };
+      return { status: 200, text: async () => JSON.stringify({ ok: true, result: true }) };
+    };
+    await new TelegramClient("TOKEN", fetchFn).setWebhook("https://x.run.app/internal/telegram", "s3cret");
+    expect(sent.url).toBe("https://api.telegram.org/botTOKEN/setWebhook");
+    expect(sent.body).toMatchObject({ url: "https://x.run.app/internal/telegram", secret_token: "s3cret" });
+  });
 });
 
 describe("Notifier", () => {
@@ -88,6 +99,16 @@ describe("Notifier", () => {
     await notifier.handleCallback("ok:missing", "cq4");
     expect(perform).not.toHaveBeenCalled();
     expect(telegram.answerCallbackQuery).toHaveBeenCalledWith("cq4", expect.stringMatching(/no longer pending/));
+  });
+
+  it("handleUpdate (webhook path) dispatches a tap from the allowed chat", async () => {
+    const { notifier, perform } = makeNotifier();
+    await notifier.propose(notice(), "approve");
+    await notifier.handleUpdate({
+      update_id: 5,
+      callback_query: { id: "cq6", data: "ok:a1", message: { message_id: 1, chat: { id: 555 } } },
+    });
+    expect(perform).toHaveBeenCalledOnce();
   });
 
   it("pollOnce ignores callbacks from a different chat", async () => {

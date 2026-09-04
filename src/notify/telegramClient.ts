@@ -67,4 +67,18 @@ export class TelegramClient {
   getUpdates(offset: number, timeoutSec = 25): Promise<TelegramUpdate[]> {
     return this.call("getUpdates", { offset, timeout: timeoutSec, allowed_updates: ["callback_query"] });
   }
+
+  /**
+   * Register a webhook so Telegram POSTs taps to `url` (scale-to-zero friendly).
+   * `secretToken` is echoed back in the `X-Telegram-Bot-Api-Secret-Token` header
+   * so the receiving route can authenticate the call.
+   */
+  setWebhook(url: string, secretToken: string): Promise<unknown> {
+    return this.call("setWebhook", { url, secret_token: secretToken, allowed_updates: ["callback_query"] });
+  }
+
+  /** Remove any webhook (so long-polling can be used instead). */
+  deleteWebhook(): Promise<unknown> {
+    return this.call("deleteWebhook", {});
+  }
 }

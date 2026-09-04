@@ -51,3 +51,21 @@ operation safe.
 - The poller runs in the always-on process; a webhook mode can be added later
   for efficiency at scale.
 - callback_data carries the action id (fits Telegram's 64-byte limit).
+
+## Update (2026-09-03): webhook + external-cron mode (scale-to-zero)
+
+Long-polling needs an always-on process, which is cost-inefficient on
+scale-to-zero hosts (Cloud Run). Added an alternative delivery mode, selected by
+env (`SLEEPBOT_PUBLIC_URL` + `SLEEPBOT_INTERNAL_SECRET` present → webhook, else
+long-poll):
+
+- **Telegram → webhook.** `setWebhook(<URL>/internal/telegram, secret_token)`;
+  each tap POSTs there (waking the service from zero) and is authenticated by the
+  `X-Telegram-Bot-Api-Secret-Token` header. `Notifier.handleUpdate()` processes
+  one update (webhook or poll share it).
+- **Scheduler → external cron.** Cloud Scheduler POSTs `<URL>/internal/sweep`
+  (Bearer/secret auth) on a cadence, replacing the in-process `setInterval`.
+
+Both `/internal/*` routes live on the Fastify server (the agent already runs
+in-process), require `SLEEPBOT_INTERNAL_SECRET`, and are the $0 / zero-ops path.
+Long-poll + in-process scheduler remains the default for a VM / always-on host.
