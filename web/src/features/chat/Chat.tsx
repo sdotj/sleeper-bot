@@ -107,7 +107,7 @@ export function Chat({
   );
 }
 
-function TypingIndicator() {
+export function TypingIndicator() {
   return (
     <div
       className="flex max-w-[85%] items-center gap-1.5 self-start rounded-2xl rounded-bl-md border border-border bg-surface-2 px-4 py-3.5"
@@ -124,7 +124,7 @@ function TypingIndicator() {
   );
 }
 
-function Bubble({
+export function Bubble({
   role,
   muted,
   children,

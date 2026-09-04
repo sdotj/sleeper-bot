@@ -9,7 +9,7 @@ import { Standings } from "./features/standings/Standings";
 import { Matchups } from "./features/matchups/Matchups";
 import { DraftView } from "./features/draft/DraftView";
 import { Audit } from "./features/audit/Audit";
-import { Chat } from "./features/chat/Chat";
+import { ChatPane } from "./features/chat/ChatPane";
 import { Settings } from "./features/settings/Settings";
 
 const TABS = ["My Team", "Standings", "Matchups", "Draft", "Audit", "Chat", "Settings"] as const;
@@ -51,11 +51,7 @@ function Dashboard({ loggedIn }: { loggedIn: boolean }) {
             {tab === "Matchups" && <Matchups leagueId={active} />}
             {tab === "Draft" && <DraftView leagueId={active} />}
             {tab === "Audit" && <Audit leagueId={active} />}
-            {tab === "Chat" && (
-              <div className="h-[72vh] rounded-xl border border-border bg-surface p-3">
-                <Chat />
-              </div>
-            )}
+            {tab === "Chat" && <ChatPane />}
             {tab === "Settings" && <Settings />}
           </main>
         </div>

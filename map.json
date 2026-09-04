@@ -539,10 +539,10 @@
         {
           "name": "buildApiServer",
           "kind": "function",
-          "signature": "export_statement:export async function buildApiServer(ops: SleepBotOperations): Promise<FastifyInstance> { const app = Fastify({ logger: false }); // Login gate: registers @fastify/jwt, POST /api/login, and an onRequest guard // over every protected route. No-op (open API) unless auth is configured // (dec.api-auth-gate). Registered before the routes so its hook covers them. await registerAuth(app); /** Map a thrown error onto an HTTP status the GUI can branch on. */ const fail = (reply: FastifyReply, err: unknown) => { const message = (err as Error).message; if (err instanceof NeedsReauthError) return reply.status(401).send({ error: message }); if (/^unknown leagueId/.test(message)) return reply.status(404).send({ error: message }); return reply.status(400).send({ error: message }); }; /** Wrap a handler so its resolved value is returned and errors are mapped. */ const h = (fn: (req: FastifyRequest) => Promise<unknown> | unknown) => async (req: FastifyRequest, reply: FastifyReply) => { try { return await fn(req); } catch (err) { return fail(reply, err); } }; const id = (req: FastifyRequest) => (req.params as { id: string }).id; const week = (req: FastifyRequest) => { const w = (req.query as { week?: string }).week; return w ? Number(w) : undefined; }; app.get(\"/api/health\", async () => ({ ok: true })); // --- reads --------------------------------------------------------------- app.get(\"/api/leagues\", h(() => ops.listLeagues())); app.get(\"/api/leagues/:id\", h((req) => ops.getLeagueInfo(id(req)))); app.get(\"/api/leagues/:id/rosters\", h((req) => ops.getRosters(id(req)))); app.get(\"/api/leagues/:id/my-roster\", h((req) => ops.getMyRoster(id(req)))); app.get(\"/api/leagues/:id/standings\", h((req) => ops.getStandings(id(req)))); app.get(\"/api/leagues/:id/matchups\", h((req) => ops.getMatchups(id(req), week(req)))); app.get(\"/api/leagues/:id/transactions\", h((req) => ops.getTransactions(id(req), week(req)))); app.get( \"/api/leagues/:id/players\", h((req) => { const q = req.query as { query?: string; position?: string; team?: string; limit?: string }; return ops.searchPlayers(id(req), q.query ?? \"\", { position: q.position, team: q.team, limit: q.limit ? Number(q.limit) : undefined, }); }), ); app.get( \"/api/leagues/:id/trending\", h((req) => { const q = req.query as { type?: \"add\" | \"drop\"; limit?: string }; return ops.getTrendingPlayers(id(req), q.type ?? \"add\", q.limit ? Number(q.limit) : undefined); }), ); app.get(\"/api/leagues/:id/auth\", h((req) => ops.getAuthStatus(id(req)))); // --- drafts (read-only assistant) ---------------------------------------- const draftId = (req: FastifyRequest) => (req.params as { draftId: string }).draftId; const num = (v: string | undefined) => (v != null ? Number(v) : undefined); app.get(\"/api/leagues/:id/drafts\", h((req) => ops.listDrafts(id(req)))); app.get( \"/api/leagues/:id/drafts/:draftId/board\", h((req) => ops.getDraftBoard(id(req), draftId(req), num((req.query as { yourRosterId?: string }).yourRosterId))), ); app.get( \"/api/leagues/:id/drafts/:draftId/picks\", h((req) => ops.getDraftPicks(id(req), draftId(req))), ); app.get( \"/api/leagues/:id/drafts/:draftId/recommendations\", h((req) => { const q = req.query as { rosterId?: string; position?: string; limit?: string }; return ops.getDraftRecommendations(id(req), draftId(req), { rosterId: num(q.rosterId), position: q.position, limit: num(q.limit), }); }), ); // --- settings: UI-editable config + secrets ------------------------------ // All behind the login gate (the onRequest guard covers every /api/* route). app.get(\"/api/config\", h(() => ops.getConfig())); app.put(\"/api/config\", h(async (req) => (await ops.saveConfig(req.body), ops.getConfig()))); app.post(\"/api/config/reset\", h(async () => (await ops.resetConfig(), ops.getConfig()))); app.get(\"/api/secrets/sleeper\", h(() => ops.getSleeperTokenStatus())); app.put( \"/api/secrets/sleeper\", h(async (req) => { const token = (req.body as { token?: unknown })?.token; if (typeof token !== \"string\" || !token.trim()) throw new Error(\"a non-empty token is required\"); await ops.setSleeperToken(token); return ops.getSleeperTokenStatus(); }), ); app.delete(\"/api/secrets/sleeper\", h(async () => (await ops.clearSleeperToken(), ops.getSleeperTokenStatus()))); app.get(\"/api/audit\", h((req) => ops.getAuditLog((req.query as { leagueId?: string }).leagueId))); app.get( \"/api/pending\", h((req) => ops.listPendingActions((req.query as { leagueId?: string }).leagueId)), ); // --- writes (confirm-by-default) ----------------------------------------- app.post( \"/api/leagues/:id/propose/trade\", h(async (req) => proposalOutcome(await ops.proposeTrade(id(req), req.body as TradePayload))), ); app.post( \"/api/leagues/:id/propose/add-drop\", h(async (req) => proposalOutcome(await ops.proposeAddDrop(id(req), req.body as AddDropPayload))), ); app.post( \"/api/leagues/:id/propose/waiver\", h(async (req) => proposalOutcome(await ops.proposeWaiverClaim(id(req), req.body as WaiverClaimPayload))), ); app.post( \"/api/actions/:id/execute\", h((req) => ops.executeAction(id(req))), ); // --- chat (server-side Claude tool-use loop) ----------------------------- app.post(\"/api/chat\", async (req, reply) => { try { const { messages, draftContext } = (req.body as { messages?: ChatMessage[]; draftContext?: DraftContextRef }) ?? {}; // In a draft room, keep it snappy: a fast model, tight token budget, and // web capped to 1 use (the live board answers most questions with none). // The main chat can run a stronger model with freer web. const inDraft = !!draftContext; return await runChatTurn(ops, messages ?? [], { draftContext, model: inDraft ? process.env.ANTHROPIC_DRAFT_MODEL ?? process.env.ANTHROPIC_MODEL : undefined, maxTokens: inDraft ? 1500 : 4096, maxIterations: inDraft ? 8 : 12, web: { maxUses: inDraft ? 1 : 3 }, }); } catch (err) { if (err instanceof ChatUnavailableError) return reply.status(503).send({ error: err.message }); return fail(reply, err); } }); // --- static GUI (single-deployable prod) --------------------------------- // Serve the built web app when present (cloud). In dev, Vite serves it and // this is skipped. Non-API GETs fall back to index.html for the SPA. const staticDir = resolve(process.env.SLEEPBOT_STATIC_DIR ?? \"web/dist\"); if (process.env.SLEEPBOT_SERVE_STATIC !== \"false\" && existsSync(staticDir)) { app.register(fastifyStatic, { root: staticDir }); app.setNotFoundHandler((req, reply) => { if (req.method === \"GET\" && !req.url.startsWith(\"/api\")) return reply.sendFile(\"index.html\"); return reply.status(404).send({ error: \"not found\" }); }); } return app; }",
+          "signature": "export_statement:export async function buildApiServer(ops: SleepBotOperations): Promise<FastifyInstance> { const app = Fastify({ logger: false }); // Login gate: registers @fastify/jwt, POST /api/login, and an onRequest guard // over every protected route. No-op (open API) unless auth is configured // (dec.api-auth-gate). Registered before the routes so its hook covers them. await registerAuth(app); /** Map a thrown error onto an HTTP status the GUI can branch on. */ const fail = (reply: FastifyReply, err: unknown) => { const message = (err as Error).message; if (err instanceof NeedsReauthError) return reply.status(401).send({ error: message }); if (/^unknown (leagueId|conversationId)/.test(message)) return reply.status(404).send({ error: message }); return reply.status(400).send({ error: message }); }; /** Wrap a handler so its resolved value is returned and errors are mapped. */ const h = (fn: (req: FastifyRequest) => Promise<unknown> | unknown) => async (req: FastifyRequest, reply: FastifyReply) => { try { return await fn(req); } catch (err) { return fail(reply, err); } }; const id = (req: FastifyRequest) => (req.params as { id: string }).id; const week = (req: FastifyRequest) => { const w = (req.query as { week?: string }).week; return w ? Number(w) : undefined; }; app.get(\"/api/health\", async () => ({ ok: true })); // --- reads --------------------------------------------------------------- app.get(\"/api/leagues\", h(() => ops.listLeagues())); app.get(\"/api/leagues/:id\", h((req) => ops.getLeagueInfo(id(req)))); app.get(\"/api/leagues/:id/rosters\", h((req) => ops.getRosters(id(req)))); app.get(\"/api/leagues/:id/my-roster\", h((req) => ops.getMyRoster(id(req)))); app.get(\"/api/leagues/:id/standings\", h((req) => ops.getStandings(id(req)))); app.get(\"/api/leagues/:id/matchups\", h((req) => ops.getMatchups(id(req), week(req)))); app.get(\"/api/leagues/:id/transactions\", h((req) => ops.getTransactions(id(req), week(req)))); app.get( \"/api/leagues/:id/players\", h((req) => { const q = req.query as { query?: string; position?: string; team?: string; limit?: string }; return ops.searchPlayers(id(req), q.query ?? \"\", { position: q.position, team: q.team, limit: q.limit ? Number(q.limit) : undefined, }); }), ); app.get( \"/api/leagues/:id/trending\", h((req) => { const q = req.query as { type?: \"add\" | \"drop\"; limit?: string }; return ops.getTrendingPlayers(id(req), q.type ?? \"add\", q.limit ? Number(q.limit) : undefined); }), ); app.get(\"/api/leagues/:id/auth\", h((req) => ops.getAuthStatus(id(req)))); // --- drafts (read-only assistant) ---------------------------------------- const draftId = (req: FastifyRequest) => (req.params as { draftId: string }).draftId; const num = (v: string | undefined) => (v != null ? Number(v) : undefined); app.get(\"/api/leagues/:id/drafts\", h((req) => ops.listDrafts(id(req)))); app.get( \"/api/leagues/:id/drafts/:draftId/board\", h((req) => ops.getDraftBoard(id(req), draftId(req), num((req.query as { yourRosterId?: string }).yourRosterId))), ); app.get( \"/api/leagues/:id/drafts/:draftId/picks\", h((req) => ops.getDraftPicks(id(req), draftId(req))), ); app.get( \"/api/leagues/:id/drafts/:draftId/recommendations\", h((req) => { const q = req.query as { rosterId?: string; position?: string; limit?: string }; return ops.getDraftRecommendations(id(req), draftId(req), { rosterId: num(q.rosterId), position: q.position, limit: num(q.limit), }); }), ); // --- settings: UI-editable config + secrets ------------------------------ // All behind the login gate (the onRequest guard covers every /api/* route). app.get(\"/api/config\", h(() => ops.getConfig())); app.put(\"/api/config\", h(async (req) => (await ops.saveConfig(req.body), ops.getConfig()))); app.post(\"/api/config/reset\", h(async () => (await ops.resetConfig(), ops.getConfig()))); app.get(\"/api/secrets/sleeper\", h(() => ops.getSleeperTokenStatus())); app.put( \"/api/secrets/sleeper\", h(async (req) => { const token = (req.body as { token?: unknown })?.token; if (typeof token !== \"string\" || !token.trim()) throw new Error(\"a non-empty token is required\"); await ops.setSleeperToken(token); return ops.getSleeperTokenStatus(); }), ); app.delete(\"/api/secrets/sleeper\", h(async () => (await ops.clearSleeperToken(), ops.getSleeperTokenStatus()))); app.get(\"/api/audit\", h((req) => ops.getAuditLog((req.query as { leagueId?: string }).leagueId))); app.get( \"/api/pending\", h((req) => ops.listPendingActions((req.query as { leagueId?: string }).leagueId)), ); // --- writes (confirm-by-default) ----------------------------------------- app.post( \"/api/leagues/:id/propose/trade\", h(async (req) => proposalOutcome(await ops.proposeTrade(id(req), req.body as TradePayload))), ); app.post( \"/api/leagues/:id/propose/add-drop\", h(async (req) => proposalOutcome(await ops.proposeAddDrop(id(req), req.body as AddDropPayload))), ); app.post( \"/api/leagues/:id/propose/waiver\", h(async (req) => proposalOutcome(await ops.proposeWaiverClaim(id(req), req.body as WaiverClaimPayload))), ); app.post( \"/api/actions/:id/execute\", h((req) => ops.executeAction(id(req))), ); // --- chat (server-side Claude tool-use loop) ----------------------------- // Two shapes on one route: // - Draft room (body has draftContext): EPHEMERAL, client sends full history, // fast model, returns { reply } (unchanged). // - Main chat (no draftContext): PERSISTED, client sends { conversationId?, // message }, the server loads/saves the thread and returns { conversationId, // reply } (dec.chat-history-memory). app.post(\"/api/chat\", async (req, reply) => { try { const body = (req.body as { messages?: ChatMessage[]; draftContext?: DraftContextRef; conversationId?: string; message?: string; }) ?? {}; if (body.draftContext) { return await runChatTurn(ops, body.messages ?? [], { draftContext: body.draftContext, model: process.env.ANTHROPIC_DRAFT_MODEL ?? process.env.ANTHROPIC_MODEL, maxTokens: 1500, maxIterations: 8, web: { maxUses: 1 }, }); } if (typeof body.message !== \"string\" || !body.message.trim()) { return reply.status(400).send({ error: \"message is required\" }); } return await runPersistedTurn( ops, ops.chatHistory, { conversationId: body.conversationId, message: body.message }, { maxTokens: 4096, maxIterations: 12, web: { maxUses: 3 } }, ); } catch (err) { if (err instanceof ChatUnavailableError) return reply.status(503).send({ error: err.message }); return fail(reply, err); } }); // --- chat history (conversation list / resume / rename / delete) ---------- app.get(\"/api/conversations\", h(() => ops.chatHistory.list())); app.get( \"/api/conversations/:id\", h(async (req) => { const convo = await ops.chatHistory.get(id(req)); if (!convo) throw new Error(`unknown conversationId \"${id(req)}\"`); return convo; }), ); app.patch( \"/api/conversations/:id\", h((req) => ops.chatHistory.rename(id(req), (req.body as { title?: string })?.title ?? \"\")), ); app.delete(\"/api/conversations/:id\", h(async (req) => (await ops.chatHistory.delete(id(req)), { ok: true }))); // --- static GUI (single-deployable prod) --------------------------------- // Serve the built web app when present (cloud). In dev, Vite serves it and // this is skipped. Non-API GETs fall back to index.html for the SPA. const staticDir = resolve(process.env.SLEEPBOT_STATIC_DIR ?? \"web/dist\"); if (process.env.SLEEPBOT_SERVE_STATIC !== \"false\" && existsSync(staticDir)) { app.register(fastifyStatic, { root: staticDir }); app.setNotFoundHandler((req, reply) => { if (req.method === \"GET\" && !req.url.startsWith(\"/api\")) return reply.sendFile(\"index.html\"); return reply.status(404).send({ error: \"not found\" }); }); } return app; }",
           "file": "src/api/server.ts",
-          "line": 22,
-          "end_line": 185
+          "line": 28,
+          "end_line": 226
         }
       ]
     },
@@ -780,6 +780,8 @@
       "files": [
         "src/chat/chatLoop.ts",
         "src/chat/index.ts",
+        "src/chat/session.test.ts",
+        "src/chat/session.ts",
         "src/chat/tools.ts"
       ],
       "contracts": [],
@@ -799,6 +801,14 @@
           "file": "src/chat/chatLoop.ts",
           "line": 44,
           "end_line": 145
+        },
+        {
+          "name": "runPersistedTurn",
+          "kind": "function",
+          "signature": "export_statement:export async function runPersistedTurn( ops: SleepBotOperations, history: ChatHistory, input: PersistedTurnInput, opts: Parameters<typeof runChatTurn>[2] = {}, runner: ChatRunner = runChatTurn, ): Promise<{ conversationId: string; reply: string; toolCalls: string[] }> { const message = input.message.trim(); if (!message) throw new Error(\"message is required\"); const existing = input.conversationId ? await history.get(input.conversationId) : null; if (input.conversationId && !existing) { throw new Error(`unknown conversationId \"${input.conversationId}\"`); } const convo: Conversation = existing ?? newConversation(message, input.leagueId); const modelHistory = trimForModel([...convo.messages, { role: \"user\", content: message, at: Date.now() }]); // May throw (e.g. ChatUnavailableError) BEFORE we persist anything. const { reply, toolCalls } = await runner(ops, modelHistory, opts); const now = Date.now(); convo.messages.push({ role: \"user\", content: message, at: now }); convo.messages.push({ role: \"assistant\", content: reply, at: now }); convo.updatedAt = now; await history.save(convo); return { conversationId: convo.id, reply, toolCalls }; }",
+          "file": "src/chat/session.ts",
+          "line": 30,
+          "end_line": 57
         },
         {
           "name": "ChatUnavailableError",
@@ -833,6 +843,22 @@
           "end_line": 29
         },
         {
+          "name": "PersistedTurnInput",
+          "kind": "interface",
+          "signature": "export_statement:export interface PersistedTurnInput { conversationId?: string; message: string; leagueId?: string; }",
+          "file": "src/chat/session.ts",
+          "line": 17,
+          "end_line": 21
+        },
+        {
+          "name": "ChatRunner",
+          "kind": "type",
+          "signature": "export_statement:export type ChatRunner = ( ops: SleepBotOperations, history: ChatMessage[], opts: Parameters<typeof runChatTurn>[2], ) => Promise<{ reply: string; toolCalls: string[] }>;",
+          "file": "src/chat/session.ts",
+          "line": 11,
+          "end_line": 15
+        },
+        {
           "name": "export { CHAT_TOOLS, dispatchTool } from \"./tools.js\";",
           "kind": "other",
           "signature": "export_statement:export { CHAT_TOOLS, dispatchTool } from \"./tools.js\";",
@@ -847,6 +873,14 @@
           "file": "src/chat/index.ts",
           "line": 1,
           "end_line": 6
+        },
+        {
+          "name": "export { runPersistedTurn } from \"./session.js\";",
+          "kind": "other",
+          "signature": "export_statement:export { runPersistedTurn } from \"./session.js\";",
+          "file": "src/chat/index.ts",
+          "line": 8,
+          "end_line": 8
         }
       ]
     },
@@ -933,42 +967,42 @@
         {
           "name": "buildAppContext",
           "kind": "function",
-          "signature": "export_statement:export async function buildAppContext(config: ConfigRegistry, storeOverride?: Store): Promise<AppContext> { const store = storeOverride ?? (await createStore()); // Postgres when DATABASE_URL is set, else JSON file // Store-authoritative after first seed: adopt a stored config if present, else // seed the store from the env/file config we were handed (dec.ui-config-editing). await reconcileConfig(config, store); const audit = new AuditLog(store); const pending = new PendingStore(store); const rules = new RulesEngine(await loadRulesConfig()); // One shared Sleeper client so the ~5MB players dump is cached across the // adapters and both value bridges. const sleeperClient = new SleeperClient(); // Defenses aren't ranked by KTC or Sleeper, so overlay a DST tier onto both // value modes (its player ids are team codes, which is how Sleeper keys DEF). const dst = await loadDstValueMap(); const redraftValue = withDst(buildRedraftValue(sleeperClient), dst); const dynastyValue = withDst(await buildDynastyValue(sleeperClient), dst); // Per-league selection: a league's config `valueMode` decides which to use. const valueFor = (leagueId: string): ValueProvider => config.get(leagueId).valueMode === \"dynasty\" ? dynastyValue : redraftValue; // One shared Sleeper write session for ALL leagues: the token is a single // account credential, so sharing it means a UI update (or a needs-reauth on a // failed write) applies everywhere at once. const resolved = await resolveSleeperToken(store); let tokenSource = resolved.source; const sleeperSession = new SleeperSessionProvider({ token: resolved.token }); const adapters = new Map<string, WriteableLeagueAdapter>(); const adapterFor = (leagueId: string): WriteableLeagueAdapter => { let adapter = adapters.get(leagueId); if (!adapter) { adapter = buildAdapter(config.get(leagueId), sleeperClient, sleeperSession); adapters.set(leagueId, adapter); } return adapter; }; const pipeline = new ActionPipeline({ rules, audit, pending, valueFor, adapterFor }); const draft = new DraftAssistant({ adapterFor, valueFor }); return { config, adapterFor, valueFor, pipeline, audit, draft, store, async reload() { const stored = await store.get<unknown>(\"config\", \"current\"); if (stored != null) config.applyConfig(ConfigRegistry.validate(stored, \"stored config\")); adapters.clear(); // rebuild against the new config (they share sleeperSession) }, async saveConfig(parsed: unknown) { const validated = ConfigRegistry.validate(parsed, \"submitted config\"); await store.put(\"config\", \"current\", validated); config.applyConfig(validated); adapters.clear(); }, async resetConfigToEnv() { const seed = ConfigRegistry.load(); await store.put(\"config\", \"current\", seed.config); config.applyConfig(seed.config); adapters.clear(); }, secretsEnabled, async setSleeperToken(token: string) { if (!secretsEnabled()) { throw new Error( \"SLEEPBOT_SECRET_KEY is not set — cannot store the Sleeper token. Set it (a 32-byte key) and redeploy to enable saving secrets from the UI.\", ); } const trimmed = token.trim(); inspectToken(trimmed); // reject non-JWTs before we store anything await store.put(\"secrets\", \"sleeper_token\", { ciphertext: encryptSecret(trimmed), updatedAt: new Date().toISOString(), }); sleeperSession.setToken(trimmed); // applies live; clears needs-reauth tokenSource = \"store\"; console.error(\"[secrets] Sleeper write token updated from the settings panel.\"); }, async clearSleeperToken() { await store.delete(\"secrets\", \"sleeper_token\"); const env = envSleeperToken(); sleeperSession.setToken(env); tokenSource = env ? \"env\" : \"none\"; console.error(\"[secrets] stored Sleeper token cleared; reverted to the env token if present.\"); }, sleeperTokenStatus(): SleeperTokenStatus { return { ...sleeperSession.status(), source: tokenSource, editable: secretsEnabled() }; }, }; }",
+          "signature": "export_statement:export async function buildAppContext(config: ConfigRegistry, storeOverride?: Store): Promise<AppContext> { const store = storeOverride ?? (await createStore()); // Postgres when DATABASE_URL is set, else JSON file // Store-authoritative after first seed: adopt a stored config if present, else // seed the store from the env/file config we were handed (dec.ui-config-editing). await reconcileConfig(config, store); const audit = new AuditLog(store); const pending = new PendingStore(store); const rules = new RulesEngine(await loadRulesConfig()); // One shared Sleeper client so the ~5MB players dump is cached across the // adapters and both value bridges. const sleeperClient = new SleeperClient(); // Defenses aren't ranked by KTC or Sleeper, so overlay a DST tier onto both // value modes (its player ids are team codes, which is how Sleeper keys DEF). const dst = await loadDstValueMap(); const redraftValue = withDst(buildRedraftValue(sleeperClient), dst); const dynastyValue = withDst(await buildDynastyValue(sleeperClient), dst); // Per-league selection: a league's config `valueMode` decides which to use. const valueFor = (leagueId: string): ValueProvider => config.get(leagueId).valueMode === \"dynasty\" ? dynastyValue : redraftValue; // One shared Sleeper write session for ALL leagues: the token is a single // account credential, so sharing it means a UI update (or a needs-reauth on a // failed write) applies everywhere at once. const resolved = await resolveSleeperToken(store); let tokenSource = resolved.source; const sleeperSession = new SleeperSessionProvider({ token: resolved.token }); const adapters = new Map<string, WriteableLeagueAdapter>(); const adapterFor = (leagueId: string): WriteableLeagueAdapter => { let adapter = adapters.get(leagueId); if (!adapter) { adapter = buildAdapter(config.get(leagueId), sleeperClient, sleeperSession); adapters.set(leagueId, adapter); } return adapter; }; const pipeline = new ActionPipeline({ rules, audit, pending, valueFor, adapterFor }); const draft = new DraftAssistant({ adapterFor, valueFor }); const chatHistory = new ChatHistory(store); return { config, adapterFor, valueFor, pipeline, audit, draft, chatHistory, store, async reload() { const stored = await store.get<unknown>(\"config\", \"current\"); if (stored != null) config.applyConfig(ConfigRegistry.validate(stored, \"stored config\")); adapters.clear(); // rebuild against the new config (they share sleeperSession) }, async saveConfig(parsed: unknown) { const validated = ConfigRegistry.validate(parsed, \"submitted config\"); await store.put(\"config\", \"current\", validated); config.applyConfig(validated); adapters.clear(); }, async resetConfigToEnv() { const seed = ConfigRegistry.load(); await store.put(\"config\", \"current\", seed.config); config.applyConfig(seed.config); adapters.clear(); }, secretsEnabled, async setSleeperToken(token: string) { if (!secretsEnabled()) { throw new Error( \"SLEEPBOT_SECRET_KEY is not set — cannot store the Sleeper token. Set it (a 32-byte key) and redeploy to enable saving secrets from the UI.\", ); } const trimmed = token.trim(); inspectToken(trimmed); // reject non-JWTs before we store anything await store.put(\"secrets\", \"sleeper_token\", { ciphertext: encryptSecret(trimmed), updatedAt: new Date().toISOString(), }); sleeperSession.setToken(trimmed); // applies live; clears needs-reauth tokenSource = \"store\"; console.error(\"[secrets] Sleeper write token updated from the settings panel.\"); }, async clearSleeperToken() { await store.delete(\"secrets\", \"sleeper_token\"); const env = envSleeperToken(); sleeperSession.setToken(env); tokenSource = env ? \"env\" : \"none\"; console.error(\"[secrets] stored Sleeper token cleared; reverted to the env token if present.\"); }, sleeperTokenStatus(): SleeperTokenStatus { return { ...sleeperSession.status(), source: tokenSource, editable: secretsEnabled() }; }, }; }",
           "file": "src/core/context.ts",
-          "line": 74,
-          "end_line": 176
+          "line": 77,
+          "end_line": 181
         },
         {
           "name": "SleepBotOperations",
           "kind": "class",
-          "signature": "export_statement:export class SleepBotOperations { constructor(private readonly ctx: AppContext) {} // --- reads --------------------------------------------------------------- listLeagues() { return this.ctx.config.list().map((l) => ({ id: l.id, platform: l.platform, sleeperLeagueId: l.sleeper?.leagueId, espnLeagueId: l.espn?.leagueId, })); } getLeagueInfo(leagueId: string) { return this.ctx.adapterFor(leagueId).getLeagueInfo(); } getRosters(leagueId: string) { return this.ctx.adapterFor(leagueId).getRosters(); } getMyRoster(leagueId: string) { return this.ctx.adapterFor(leagueId).getMyRoster(); } getStandings(leagueId: string) { return this.ctx.adapterFor(leagueId).getStandings(); } getMatchups(leagueId: string, week?: number) { return this.ctx.adapterFor(leagueId).getMatchups(week); } getTransactions(leagueId: string, week?: number) { return this.ctx.adapterFor(leagueId).getTransactions(week); } searchPlayers(leagueId: string, query: string, filters?: PlayerSearchFilters) { return this.ctx.adapterFor(leagueId).searchPlayers(query, filters); } getTrendingPlayers(leagueId: string, type: \"add\" | \"drop\", limit?: number) { return this.ctx.adapterFor(leagueId).getTrendingPlayers(type, limit); } getAuthStatus(leagueId: string) { return this.ctx.adapterFor(leagueId).writeAuthStatus(); } getAuditLog(leagueId?: string) { return this.ctx.audit.list(leagueId); } // --- drafts (read-only assistant) ---------------------------------------- listDrafts(leagueId: string) { return this.ctx.draft.listDrafts(leagueId); } getDraftPicks(leagueId: string, draftId: string) { return this.ctx.draft.getPicks(leagueId, draftId); } getDraftBoard(leagueId: string, draftId: string, yourRosterId?: number) { return this.ctx.draft.getBoard(leagueId, draftId, { yourRosterId }); } getDraftRecommendations( leagueId: string, draftId: string, opts: { rosterId?: number; position?: string; limit?: number } = {}, ) { return this.ctx.draft.recommend(leagueId, draftId, opts); } /** Best available at every position (keeps K/DEF visible). */ getDraftBestByPosition( leagueId: string, draftId: string, opts: { rosterId?: number; perPosition?: number } = {}, ) { return this.ctx.draft.bestByPosition(leagueId, draftId, opts); } // --- writes (confirm-by-default via the pipeline) ------------------------ proposeTrade(leagueId: string, payload: TradePayload) { return this.ctx.pipeline.propose(leagueId, \"trade\", payload); } proposeWaiverClaim(leagueId: string, payload: WaiverClaimPayload) { return this.ctx.pipeline.propose(leagueId, \"waiver_claim\", payload); } proposeAddDrop(leagueId: string, payload: AddDropPayload) { return this.ctx.pipeline.propose(leagueId, \"add_drop\", payload); } executeAction(actionId: string) { return this.ctx.pipeline.execute(actionId, \"user\"); } listPendingActions(leagueId?: string) { return this.ctx.pipeline.listPending(leagueId); } // --- settings: UI-editable config + secrets (dec.ui-config-editing) ------- /** The current leagues config (source of truth is the store). */ getConfig() { return this.ctx.config.config; } /** Validate + persist a new leagues config and adopt it live. Throws on invalid input. */ saveConfig(parsed: unknown) { return this.ctx.saveConfig(parsed); } /** Discard the stored config and reseed from the environment. */ resetConfig() { return this.ctx.resetConfigToEnv(); } /** Status of the Sleeper write token (never returns the token itself). */ getSleeperTokenStatus() { return this.ctx.sleeperTokenStatus(); } /** Set the Sleeper write token (encrypted at rest); applies live. */ setSleeperToken(token: string) { return this.ctx.setSleeperToken(token); } /** Remove the stored Sleeper token; revert to the env seed. */ clearSleeperToken() { return this.ctx.clearSleeperToken(); } }",
+          "signature": "export_statement:export class SleepBotOperations { constructor(private readonly ctx: AppContext) {} // --- reads --------------------------------------------------------------- listLeagues() { return this.ctx.config.list().map((l) => ({ id: l.id, platform: l.platform, sleeperLeagueId: l.sleeper?.leagueId, espnLeagueId: l.espn?.leagueId, })); } getLeagueInfo(leagueId: string) { return this.ctx.adapterFor(leagueId).getLeagueInfo(); } getRosters(leagueId: string) { return this.ctx.adapterFor(leagueId).getRosters(); } getMyRoster(leagueId: string) { return this.ctx.adapterFor(leagueId).getMyRoster(); } getStandings(leagueId: string) { return this.ctx.adapterFor(leagueId).getStandings(); } getMatchups(leagueId: string, week?: number) { return this.ctx.adapterFor(leagueId).getMatchups(week); } getTransactions(leagueId: string, week?: number) { return this.ctx.adapterFor(leagueId).getTransactions(week); } searchPlayers(leagueId: string, query: string, filters?: PlayerSearchFilters) { return this.ctx.adapterFor(leagueId).searchPlayers(query, filters); } getTrendingPlayers(leagueId: string, type: \"add\" | \"drop\", limit?: number) { return this.ctx.adapterFor(leagueId).getTrendingPlayers(type, limit); } getAuthStatus(leagueId: string) { return this.ctx.adapterFor(leagueId).writeAuthStatus(); } getAuditLog(leagueId?: string) { return this.ctx.audit.list(leagueId); } // --- drafts (read-only assistant) ---------------------------------------- listDrafts(leagueId: string) { return this.ctx.draft.listDrafts(leagueId); } getDraftPicks(leagueId: string, draftId: string) { return this.ctx.draft.getPicks(leagueId, draftId); } getDraftBoard(leagueId: string, draftId: string, yourRosterId?: number) { return this.ctx.draft.getBoard(leagueId, draftId, { yourRosterId }); } getDraftRecommendations( leagueId: string, draftId: string, opts: { rosterId?: number; position?: string; limit?: number } = {}, ) { return this.ctx.draft.recommend(leagueId, draftId, opts); } /** Best available at every position (keeps K/DEF visible). */ getDraftBestByPosition( leagueId: string, draftId: string, opts: { rosterId?: number; perPosition?: number } = {}, ) { return this.ctx.draft.bestByPosition(leagueId, draftId, opts); } // --- writes (confirm-by-default via the pipeline) ------------------------ proposeTrade(leagueId: string, payload: TradePayload) { return this.ctx.pipeline.propose(leagueId, \"trade\", payload); } proposeWaiverClaim(leagueId: string, payload: WaiverClaimPayload) { return this.ctx.pipeline.propose(leagueId, \"waiver_claim\", payload); } proposeAddDrop(leagueId: string, payload: AddDropPayload) { return this.ctx.pipeline.propose(leagueId, \"add_drop\", payload); } executeAction(actionId: string) { return this.ctx.pipeline.execute(actionId, \"user\"); } listPendingActions(leagueId?: string) { return this.ctx.pipeline.listPending(leagueId); } // --- settings: UI-editable config + secrets (dec.ui-config-editing) ------- /** The current leagues config (source of truth is the store). */ getConfig() { return this.ctx.config.config; } /** Validate + persist a new leagues config and adopt it live. Throws on invalid input. */ saveConfig(parsed: unknown) { return this.ctx.saveConfig(parsed); } /** Discard the stored config and reseed from the environment. */ resetConfig() { return this.ctx.resetConfigToEnv(); } /** Status of the Sleeper write token (never returns the token itself). */ getSleeperTokenStatus() { return this.ctx.sleeperTokenStatus(); } /** Set the Sleeper write token (encrypted at rest); applies live. */ setSleeperToken(token: string) { return this.ctx.setSleeperToken(token); } /** Remove the stored Sleeper token; revert to the env seed. */ clearSleeperToken() { return this.ctx.clearSleeperToken(); } // --- chat history (dec.chat-history-memory) ------------------------------ // The persisted conversation store. The chat routes drive it directly (the // chat path already calls the chat module directly, not via a facade method). get chatHistory(): ChatHistory { return this.ctx.chatHistory; } }",
           "file": "src/core/operations.ts",
-          "line": 40,
-          "end_line": 156
+          "line": 41,
+          "end_line": 164
         },
         {
           "name": "proposalOutcome",
           "kind": "function",
           "signature": "export_statement:export function proposalOutcome(action: ProposedAction) { if (action.status === \"rejected\") { return { ...action, note: `BLOCKED by a rule — nothing was stored or sent. ${action.verdict.blockedReasons.join(\"; \")}`, }; } const warn = action.verdict.warnings.length ? ` Warnings: ${action.verdict.warnings.join(\"; \")}.` : \"\"; return { ...action, note: `Proposed as a DRAFT — nothing has been sent. To send it, call execute ` + `with actionId \"${action.id}\".${warn}`, }; }",
           "file": "src/core/operations.ts",
-          "line": 15,
-          "end_line": 31
+          "line": 16,
+          "end_line": 32
         },
         {
           "name": "AppContext",
           "kind": "interface",
-          "signature": "export_statement:export interface AppContext { config: ConfigRegistry; /** The write-capable adapter for a league (also serves reads), cached per league. */ adapterFor(leagueId: string): WriteableLeagueAdapter; /** Player value for a league, per its configured mode (redraft vs dynasty). */ valueFor(leagueId: string): ValueProvider; pipeline: ActionPipeline; audit: AuditLog; draft: DraftAssistant; /** The shared persistence store (audit, pending, agent outbox). */ store: Store; // --- UI-editable config + secrets (dec.ui-config-editing) ---------------- /** Re-read the leagues config from the store and rebuild per-league adapters. */ reload(): Promise<void>; /** Validate + persist a new leagues config, then adopt it live. Throws (persists nothing) on invalid input. */ saveConfig(parsed: unknown): Promise<void>; /** Discard the stored config and reseed it from the env/file (`SLEEPBOT_CONFIG_JSON` / config file). */ resetConfigToEnv(): Promise<void>; /** Whether secrets can be stored (SLEEPBOT_SECRET_KEY is set). */ secretsEnabled(): boolean; /** Encrypt + store the Sleeper write token and apply it live (clears needs-reauth). */ setSleeperToken(token: string): Promise<void>; /** Remove the stored token and revert to the env seed (if any). */ clearSleeperToken(): Promise<void>; /** Status of the active Sleeper write token, for the settings panel. */ sleeperTokenStatus(): SleeperTokenStatus; }",
+          "signature": "export_statement:export interface AppContext { config: ConfigRegistry; /** The write-capable adapter for a league (also serves reads), cached per league. */ adapterFor(leagueId: string): WriteableLeagueAdapter; /** Player value for a league, per its configured mode (redraft vs dynasty). */ valueFor(leagueId: string): ValueProvider; pipeline: ActionPipeline; audit: AuditLog; draft: DraftAssistant; /** Persistent chat conversations (main chat history). */ chatHistory: ChatHistory; /** The shared persistence store (audit, pending, agent outbox). */ store: Store; // --- UI-editable config + secrets (dec.ui-config-editing) ---------------- /** Re-read the leagues config from the store and rebuild per-league adapters. */ reload(): Promise<void>; /** Validate + persist a new leagues config, then adopt it live. Throws (persists nothing) on invalid input. */ saveConfig(parsed: unknown): Promise<void>; /** Discard the stored config and reseed it from the env/file (`SLEEPBOT_CONFIG_JSON` / config file). */ resetConfigToEnv(): Promise<void>; /** Whether secrets can be stored (SLEEPBOT_SECRET_KEY is set). */ secretsEnabled(): boolean; /** Encrypt + store the Sleeper write token and apply it live (clears needs-reauth). */ setSleeperToken(token: string): Promise<void>; /** Remove the stored token and revert to the env seed (if any). */ clearSleeperToken(): Promise<void>; /** Status of the active Sleeper write token, for the settings panel. */ sleeperTokenStatus(): SleeperTokenStatus; }",
           "file": "src/core/context.ts",
-          "line": 40,
-          "end_line": 67
+          "line": 41,
+          "end_line": 70
         },
         {
           "name": "SleeperTokenStatus",
           "kind": "interface",
           "signature": "export_statement:export interface SleeperTokenStatus extends SessionStatus { /** \"store\" = set from the UI (encrypted in the DB); \"env\" = the SLEEPER_TOKEN seed; \"none\" = unset. */ source: \"store\" | \"env\" | \"none\"; /** False when SLEEPBOT_SECRET_KEY is unset — the token can't be saved from the UI. */ editable: boolean; }",
           "file": "src/core/context.ts",
-          "line": 33,
-          "end_line": 38
+          "line": 34,
+          "end_line": 39
         },
         {
           "name": "export { SleepBotOperations, proposalOutcome } from \"./operations.js\";",
@@ -1226,6 +1260,7 @@
         "web/src/features/audit/Audit.tsx",
         "web/src/features/auth/Login.tsx",
         "web/src/features/chat/Chat.tsx",
+        "web/src/features/chat/ChatPane.tsx",
         "web/src/features/draft/DraftBoard.tsx",
         "web/src/features/draft/DraftView.tsx",
         "web/src/features/draft/Recommendations.tsx",
@@ -1251,12 +1286,12 @@
           "end_line": 97
         },
         {
-          "name": "export const api = {\n  leagues: () => get<League[]>(\"/api/leagues\"),\n  myRoster: (id: string) => get<Roster | null>(`/api/leagues/${id}/my-roster`),\n  standings: (id: string) => get<StandingRow[]>(`/api/leagues/${id}/standings`),\n  matchups: (id: string, week?: number) =>\n    get<Matchup[]>(`/api/leagues/${id}/matchups${week ? `?week=${week}` : \"\"}`),\n  auth: (id: string) => get<AuthStatus>(`/api/leagues/${id}/auth`),\n  audit: (id: string) => get<AuditEvent[]>(`/api/audit?leagueId=${encodeURIComponent(id)}`),\n  drafts: (id: string) => get<Draft[]>(`/api/leagues/${id}/drafts`),\n  draftBoard: (id: string, draftId: string, yourRosterId?: number) =>\n    get<DraftBoard>(\n      `/api/leagues/${id}/drafts/${draftId}/board${yourRosterId != null ? `?yourRosterId=${yourRosterId}` : \"\"}`,\n    ),\n  draftRecs: (\n    id: string,\n    draftId: string,\n    o: { rosterId?: number; position?: string; limit?: number } = {},\n  ) => {\n    const q = new URLSearchParams();\n    if (o.rosterId != null) q.set(\"rosterId\", String(o.rosterId));\n    if (o.position) q.set(\"position\", o.position);\n    if (o.limit != null) q.set(\"limit\", String(o.limit));\n    return get<DraftRecommendation[]>(`/api/leagues/${id}/drafts/${draftId}/recommendations?${q}`);\n  },\n\n  // --- settings ---\n  config: () => get<SleepBotConfigDoc>(\"/api/config\"),\n  saveConfig: (config: SleepBotConfigDoc) => send<SleepBotConfigDoc>(\"PUT\", \"/api/config\", config),\n  resetConfig: () => send<SleepBotConfigDoc>(\"POST\", \"/api/config/reset\"),\n  sleeperToken: () => get<SleeperTokenStatus>(\"/api/secrets/sleeper\"),\n  setSleeperToken: (token: string) =>\n    send<SleeperTokenStatus>(\"PUT\", \"/api/secrets/sleeper\", { token }),\n  clearSleeperToken: () => send<SleeperTokenStatus>(\"DELETE\", \"/api/secrets/sleeper\"),\n};",
+          "name": "export const api = {\n  leagues: () => get<League[]>(\"/api/leagues\"),\n  myRoster: (id: string) => get<Roster | null>(`/api/leagues/${id}/my-roster`),\n  standings: (id: string) => get<StandingRow[]>(`/api/leagues/${id}/standings`),\n  matchups: (id: string, week?: number) =>\n    get<Matchup[]>(`/api/leagues/${id}/matchups${week ? `?week=${week}` : \"\"}`),\n  auth: (id: string) => get<AuthStatus>(`/api/leagues/${id}/auth`),\n  audit: (id: string) => get<AuditEvent[]>(`/api/audit?leagueId=${encodeURIComponent(id)}`),\n  drafts: (id: string) => get<Draft[]>(`/api/leagues/${id}/drafts`),\n  draftBoard: (id: string, draftId: string, yourRosterId?: number) =>\n    get<DraftBoard>(\n      `/api/leagues/${id}/drafts/${draftId}/board${yourRosterId != null ? `?yourRosterId=${yourRosterId}` : \"\"}`,\n    ),\n  draftRecs: (\n    id: string,\n    draftId: string,\n    o: { rosterId?: number; position?: string; limit?: number } = {},\n  ) => {\n    const q = new URLSearchParams();\n    if (o.rosterId != null) q.set(\"rosterId\", String(o.rosterId));\n    if (o.position) q.set(\"position\", o.position);\n    if (o.limit != null) q.set(\"limit\", String(o.limit));\n    return get<DraftRecommendation[]>(`/api/leagues/${id}/drafts/${draftId}/recommendations?${q}`);\n  },\n\n  // --- settings ---\n  config: () => get<SleepBotConfigDoc>(\"/api/config\"),\n  saveConfig: (config: SleepBotConfigDoc) => send<SleepBotConfigDoc>(\"PUT\", \"/api/config\", config),\n  resetConfig: () => send<SleepBotConfigDoc>(\"POST\", \"/api/config/reset\"),\n  sleeperToken: () => get<SleeperTokenStatus>(\"/api/secrets/sleeper\"),\n  setSleeperToken: (token: string) =>\n    send<SleeperTokenStatus>(\"PUT\", \"/api/secrets/sleeper\", { token }),\n  clearSleeperToken: () => send<SleeperTokenStatus>(\"DELETE\", \"/api/secrets/sleeper\"),\n\n  // --- chat history ---\n  conversations: () => get<ConversationSummary[]>(\"/api/conversations\"),\n  conversation: (id: string) => get<Conversation>(`/api/conversations/${id}`),\n  sendChat: (message: string, conversationId?: string) =>\n    send<{ conversationId: string; reply: string; toolCalls: string[] }>(\"POST\", \"/api/chat\", {\n      message,\n      conversationId,\n    }),\n  renameConversation: (id: string, title: string) =>\n    send<Conversation>(\"PATCH\", `/api/conversations/${id}`, { title }),\n  deleteConversation: (id: string) => send<{ ok: true }>(\"DELETE\", `/api/conversations/${id}`),\n};",
           "kind": "variable",
-          "signature": "export_statement:export const api = { leagues: () => get<League[]>(\"/api/leagues\"), myRoster: (id: string) => get<Roster | null>(`/api/leagues/${id}/my-roster`), standings: (id: string) => get<StandingRow[]>(`/api/leagues/${id}/standings`), matchups: (id: string, week?: number) => get<Matchup[]>(`/api/leagues/${id}/matchups${week ? `?week=${week}` : \"\"}`), auth: (id: string) => get<AuthStatus>(`/api/leagues/${id}/auth`), audit: (id: string) => get<AuditEvent[]>(`/api/audit?leagueId=${encodeURIComponent(id)}`), drafts: (id: string) => get<Draft[]>(`/api/leagues/${id}/drafts`), draftBoard: (id: string, draftId: string, yourRosterId?: number) => get<DraftBoard>( `/api/leagues/${id}/drafts/${draftId}/board${yourRosterId != null ? `?yourRosterId=${yourRosterId}` : \"\"}`, ), draftRecs: ( id: string, draftId: string, o: { rosterId?: number; position?: string; limit?: number } = {}, ) => { const q = new URLSearchParams(); if (o.rosterId != null) q.set(\"rosterId\", String(o.rosterId)); if (o.position) q.set(\"position\", o.position); if (o.limit != null) q.set(\"limit\", String(o.limit)); return get<DraftRecommendation[]>(`/api/leagues/${id}/drafts/${draftId}/recommendations?${q}`); }, // --- settings --- config: () => get<SleepBotConfigDoc>(\"/api/config\"), saveConfig: (config: SleepBotConfigDoc) => send<SleepBotConfigDoc>(\"PUT\", \"/api/config\", config), resetConfig: () => send<SleepBotConfigDoc>(\"POST\", \"/api/config/reset\"), sleeperToken: () => get<SleeperTokenStatus>(\"/api/secrets/sleeper\"), setSleeperToken: (token: string) => send<SleeperTokenStatus>(\"PUT\", \"/api/secrets/sleeper\", { token }), clearSleeperToken: () => send<SleeperTokenStatus>(\"DELETE\", \"/api/secrets/sleeper\"), };",
+          "signature": "export_statement:export const api = { leagues: () => get<League[]>(\"/api/leagues\"), myRoster: (id: string) => get<Roster | null>(`/api/leagues/${id}/my-roster`), standings: (id: string) => get<StandingRow[]>(`/api/leagues/${id}/standings`), matchups: (id: string, week?: number) => get<Matchup[]>(`/api/leagues/${id}/matchups${week ? `?week=${week}` : \"\"}`), auth: (id: string) => get<AuthStatus>(`/api/leagues/${id}/auth`), audit: (id: string) => get<AuditEvent[]>(`/api/audit?leagueId=${encodeURIComponent(id)}`), drafts: (id: string) => get<Draft[]>(`/api/leagues/${id}/drafts`), draftBoard: (id: string, draftId: string, yourRosterId?: number) => get<DraftBoard>( `/api/leagues/${id}/drafts/${draftId}/board${yourRosterId != null ? `?yourRosterId=${yourRosterId}` : \"\"}`, ), draftRecs: ( id: string, draftId: string, o: { rosterId?: number; position?: string; limit?: number } = {}, ) => { const q = new URLSearchParams(); if (o.rosterId != null) q.set(\"rosterId\", String(o.rosterId)); if (o.position) q.set(\"position\", o.position); if (o.limit != null) q.set(\"limit\", String(o.limit)); return get<DraftRecommendation[]>(`/api/leagues/${id}/drafts/${draftId}/recommendations?${q}`); }, // --- settings --- config: () => get<SleepBotConfigDoc>(\"/api/config\"), saveConfig: (config: SleepBotConfigDoc) => send<SleepBotConfigDoc>(\"PUT\", \"/api/config\", config), resetConfig: () => send<SleepBotConfigDoc>(\"POST\", \"/api/config/reset\"), sleeperToken: () => get<SleeperTokenStatus>(\"/api/secrets/sleeper\"), setSleeperToken: (token: string) => send<SleeperTokenStatus>(\"PUT\", \"/api/secrets/sleeper\", { token }), clearSleeperToken: () => send<SleeperTokenStatus>(\"DELETE\", \"/api/secrets/sleeper\"), // --- chat history --- conversations: () => get<ConversationSummary[]>(\"/api/conversations\"), conversation: (id: string) => get<Conversation>(`/api/conversations/${id}`), sendChat: (message: string, conversationId?: string) => send<{ conversationId: string; reply: string; toolCalls: string[] }>(\"POST\", \"/api/chat\", { message, conversationId, }), renameConversation: (id: string, title: string) => send<Conversation>(\"PATCH\", `/api/conversations/${id}`, { title }), deleteConversation: (id: string) => send<{ ok: true }>(\"DELETE\", `/api/conversations/${id}`), };",
           "file": "web/src/lib/api.ts",
-          "line": 47,
-          "end_line": 80
+          "line": 49,
+          "end_line": 94
         },
         {
           "name": "export default defineConfig({\n  plugins: [react(), tailwindcss()],\n  server: {\n    port: 5173,\n    proxy: { \"/api\": process.env.SLEEPBOT_API ?? \"http://127.0.0.1:8787\" },\n  },\n});",
@@ -1391,8 +1426,8 @@
           "kind": "function",
           "signature": "export_statement:export function useAsync<T>(fn: () => Promise<T>, deps: unknown[]) { const [state, setState] = useState<{ data?: T; error?: string; loading: boolean }>({ loading: true, }); useEffect(() => { let live = true; // Keep any previous data visible while refetching (e.g. draft polling) so // the UI doesn't flash to a spinner on every refresh. setState((s) => ({ data: s.data, loading: true })); fn() .then((data) => live && setState({ data, loading: false })) .catch((err) => live && setState((s) => ({ data: s.data, error: (err as Error).message, loading: false }))); return () => { live = false; }; // eslint-disable-next-line react-hooks/exhaustive-deps }, deps); return state; }",
           "file": "web/src/lib/api.ts",
-          "line": 83,
-          "end_line": 101
+          "line": 97,
+          "end_line": 115
         },
         {
           "name": "useAuth",
@@ -1427,6 +1462,14 @@
           "end_line": 58
         },
         {
+          "name": "ChatStoredMessage",
+          "kind": "interface",
+          "signature": "export_statement:export interface ChatStoredMessage { role: \"user\" | \"assistant\"; content: string; at: number; }",
+          "file": "web/src/lib/types.ts",
+          "line": 96,
+          "end_line": 100
+        },
+        {
           "name": "Column",
           "kind": "interface",
           "signature": "export_statement:export interface Column<T> { key: string; header: ReactNode; render: (row: T) => ReactNode; className?: string; }",
@@ -1435,20 +1478,36 @@
           "end_line": 9
         },
         {
+          "name": "Conversation",
+          "kind": "interface",
+          "signature": "export_statement:export interface Conversation { id: string; title: string; leagueId?: string; createdAt: number; updatedAt: number; messages: ChatStoredMessage[]; }",
+          "file": "web/src/lib/types.ts",
+          "line": 102,
+          "end_line": 109
+        },
+        {
+          "name": "ConversationSummary",
+          "kind": "interface",
+          "signature": "export_statement:export interface ConversationSummary { id: string; title: string; leagueId?: string; createdAt: number; updatedAt: number; messageCount: number; }",
+          "file": "web/src/lib/types.ts",
+          "line": 111,
+          "end_line": 118
+        },
+        {
           "name": "Draft",
           "kind": "interface",
           "signature": "export_statement:export interface Draft { draftId: string; status: string; type: string; season: string; rounds: number; teams: number; slotToRosterId: Record<string, number>; starterSlots: Record<string, number>; }",
           "file": "web/src/lib/types.ts",
-          "line": 94,
-          "end_line": 103
+          "line": 120,
+          "end_line": 129
         },
         {
           "name": "DraftBoard",
           "kind": "interface",
           "signature": "export_statement:export interface DraftBoard { draft: Draft; pickCount: number; onTheClock: { pickNo: number; round: number; slot: number; rosterId: number | null } | null; recentPicks: DraftPick[]; yourNextPickNo: number | null; }",
           "file": "web/src/lib/types.ts",
-          "line": 115,
-          "end_line": 121
+          "line": 141,
+          "end_line": 147
         },
         {
           "name": "DraftContext",
@@ -1463,16 +1522,16 @@
           "kind": "interface",
           "signature": "export_statement:export interface DraftPick { round: number; pickNo: number; slot: number; rosterId: number | null; playerName: string; position: string; team: string | null; }",
           "file": "web/src/lib/types.ts",
-          "line": 105,
-          "end_line": 113
+          "line": 131,
+          "end_line": 139
         },
         {
           "name": "DraftRecommendation",
           "kind": "interface",
           "signature": "export_statement:export interface DraftRecommendation { playerId: string; name: string; position: string; team: string | null; value: number; reason: string; }",
           "file": "web/src/lib/types.ts",
-          "line": 123,
-          "end_line": 130
+          "line": 149,
+          "end_line": 156
         },
         {
           "name": "League",
@@ -1593,6 +1652,95 @@
           "file": "web/src/components/ui/index.ts",
           "line": 7,
           "end_line": 7
+        }
+      ]
+    },
+    {
+      "id": "sleepbot.history",
+      "kind": "module",
+      "name": "History",
+      "state": "synced",
+      "paths": [
+        "./src/history"
+      ],
+      "files": [
+        "src/history/history.test.ts",
+        "src/history/history.ts",
+        "src/history/index.ts"
+      ],
+      "contracts": [],
+      "symbols": [
+        {
+          "name": "ChatHistory",
+          "kind": "class",
+          "signature": "export_statement:export class ChatHistory { constructor(private readonly store: Store) {} /** All conversations, newest activity first, without message bodies. */ async list(): Promise<ConversationSummary[]> { const all = await this.store.list<Conversation>(COLLECTION); return all .map((c) => ({ id: c.id, title: c.title, leagueId: c.leagueId, createdAt: c.createdAt, updatedAt: c.updatedAt, messageCount: c.messages?.length ?? 0, })) .sort((a, b) => b.updatedAt - a.updatedAt); } async get(id: string): Promise<Conversation | null> { return this.store.get<Conversation>(COLLECTION, id); } async save(convo: Conversation): Promise<void> { await this.store.put(COLLECTION, convo.id, convo); } async rename(id: string, title: string): Promise<Conversation> { const convo = await this.get(id); if (!convo) throw new Error(`unknown conversationId \"${id}\"`); const trimmed = title.trim(); if (trimmed) convo.title = trimmed.slice(0, 80); convo.updatedAt = Date.now(); await this.save(convo); return convo; } async delete(id: string): Promise<void> { await this.store.delete(COLLECTION, id); } }",
+          "file": "src/history/history.ts",
+          "line": 48,
+          "end_line": 87
+        },
+        {
+          "name": "newConversation",
+          "kind": "function",
+          "signature": "export_statement:export function newConversation(firstMessage: string, leagueId?: string): Conversation { const now = Date.now(); return { id: randomUUID(), title: titleFrom(firstMessage), leagueId, createdAt: now, updatedAt: now, messages: [], }; }",
+          "file": "src/history/history.ts",
+          "line": 112,
+          "end_line": 122
+        },
+        {
+          "name": "titleFrom",
+          "kind": "function",
+          "signature": "export_statement:export function titleFrom(text: string): string { const t = text.trim().replace(/\\s+/g, \" \"); return t.length <= 48 ? t || \"New chat\" : `${t.slice(0, 47)}…`; }",
+          "file": "src/history/history.ts",
+          "line": 90,
+          "end_line": 93
+        },
+        {
+          "name": "trimForModel",
+          "kind": "function",
+          "signature": "export_statement:export function trimForModel(messages: StoredMessage[], maxChars = 48_000): ModelMessage[] { const out: ModelMessage[] = []; let total = 0; for (let i = messages.length - 1; i >= 0; i--) { total += messages[i].content.length; if (total > maxChars && out.length > 0) break; out.unshift({ role: messages[i].role, content: messages[i].content }); } return out; }",
+          "file": "src/history/history.ts",
+          "line": 100,
+          "end_line": 109
+        },
+        {
+          "name": "Conversation",
+          "kind": "interface",
+          "signature": "export_statement:export interface Conversation { id: string; title: string; /** The league the chat was opened under, when known (for future scoping). */ leagueId?: string; createdAt: number; updatedAt: number; messages: StoredMessage[]; }",
+          "file": "src/history/history.ts",
+          "line": 20,
+          "end_line": 28
+        },
+        {
+          "name": "ConversationSummary",
+          "kind": "interface",
+          "signature": "export_statement:export interface ConversationSummary { id: string; title: string; leagueId?: string; createdAt: number; updatedAt: number; messageCount: number; }",
+          "file": "src/history/history.ts",
+          "line": 31,
+          "end_line": 38
+        },
+        {
+          "name": "ModelMessage",
+          "kind": "interface",
+          "signature": "export_statement:export interface ModelMessage { role: \"user\" | \"assistant\"; content: string; }",
+          "file": "src/history/history.ts",
+          "line": 41,
+          "end_line": 44
+        },
+        {
+          "name": "StoredMessage",
+          "kind": "interface",
+          "signature": "export_statement:export interface StoredMessage { role: \"user\" | \"assistant\"; content: string; /** Epoch ms. */ at: number; }",
+          "file": "src/history/history.ts",
+          "line": 13,
+          "end_line": 18
+        },
+        {
+          "name": "export {\n  ChatHistory,\n  titleFrom,\n  trimForModel,\n  newConversation,\n  type Conversation,\n  type ConversationSummary,\n  type StoredMessage,\n  type ModelMessage,\n} from \"./history.js\";",
+          "kind": "other",
+          "signature": "export_statement:export { ChatHistory, titleFrom, trimForModel, newConversation, type Conversation, type ConversationSummary, type StoredMessage, type ModelMessage, } from \"./history.js\";",
+          "file": "src/history/index.ts",
+          "line": 1,
+          "end_line": 10
         }
       ]
     },
@@ -2359,6 +2507,11 @@
       "description": "runs the Messages API tool-use loop"
     },
     {
+      "from": "sleepbot.chat",
+      "to": "sleepbot.history",
+      "description": "loads/saves the active conversation around a persisted turn"
+    },
+    {
       "from": "sleepbot.core",
       "to": "sleepbot.config",
       "description": "loads league config"
@@ -2392,6 +2545,11 @@
       "from": "sleepbot.core",
       "to": "sleepbot.crypto",
       "description": "seals UI-set secrets (the Sleeper token) before storing them"
+    },
+    {
+      "from": "sleepbot.core",
+      "to": "sleepbot.history",
+      "description": "composes the conversation store onto the context"
     },
     {
       "from": "sleepbot.core",
@@ -2556,6 +2714,13 @@
       "severity": "warning",
       "message": "leaf node `sleepbot.gui` declares no contract",
       "node": "sleepbot.gui",
+      "path": null
+    },
+    {
+      "code": "CAIRN_CONTRACT_LEAF_UNCOVERED",
+      "severity": "warning",
+      "message": "leaf node `sleepbot.history` declares no contract",
+      "node": "sleepbot.history",
       "path": null
     },
     {

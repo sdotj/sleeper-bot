@@ -5,6 +5,7 @@ import type {
   WaiverClaimPayload,
 } from "../adapters/LeagueAdapter.js";
 import type { ProposedAction } from "../actions/index.js";
+import type { ChatHistory } from "../history/index.js";
 import type { AppContext } from "./context.js";
 
 /**
@@ -152,5 +153,12 @@ export class SleepBotOperations {
   /** Remove the stored Sleeper token; revert to the env seed. */
   clearSleeperToken() {
     return this.ctx.clearSleeperToken();
+  }
+
+  // --- chat history (dec.chat-history-memory) ------------------------------
+  // The persisted conversation store. The chat routes drive it directly (the
+  // chat path already calls the chat module directly, not via a facade method).
+  get chatHistory(): ChatHistory {
+    return this.ctx.chatHistory;
   }
 }

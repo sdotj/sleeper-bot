@@ -5,7 +5,13 @@ import fastifyStatic from "@fastify/static";
 import { NeedsReauthError } from "../auth/index.js";
 import { registerAuth } from "../gate/index.js";
 import { SleepBotOperations, proposalOutcome } from "../core/index.js";
-import { ChatUnavailableError, runChatTurn, type ChatMessage, type DraftContextRef } from "../chat/index.js";
+import {
+  ChatUnavailableError,
+  runChatTurn,
+  runPersistedTurn,
+  type ChatMessage,
+  type DraftContextRef,
+} from "../chat/index.js";
 import type {
   AddDropPayload,
   TradePayload,
@@ -31,7 +37,7 @@ export async function buildApiServer(ops: SleepBotOperations): Promise<FastifyIn
   const fail = (reply: FastifyReply, err: unknown) => {
     const message = (err as Error).message;
     if (err instanceof NeedsReauthError) return reply.status(401).send({ error: message });
-    if (/^unknown leagueId/.test(message)) return reply.status(404).send({ error: message });
+    if (/^unknown (leagueId|conversationId)/.test(message)) return reply.status(404).send({ error: message });
     return reply.status(400).send({ error: message });
   };
 
@@ -148,26 +154,61 @@ export async function buildApiServer(ops: SleepBotOperations): Promise<FastifyIn
   );
 
   // --- chat (server-side Claude tool-use loop) -----------------------------
+  // Two shapes on one route:
+  //  - Draft room (body has draftContext): EPHEMERAL, client sends full history,
+  //    fast model, returns { reply } (unchanged).
+  //  - Main chat (no draftContext): PERSISTED, client sends { conversationId?,
+  //    message }, the server loads/saves the thread and returns { conversationId,
+  //    reply } (dec.chat-history-memory).
   app.post("/api/chat", async (req, reply) => {
     try {
-      const { messages, draftContext } =
-        (req.body as { messages?: ChatMessage[]; draftContext?: DraftContextRef }) ?? {};
-      // In a draft room, keep it snappy: a fast model, tight token budget, and
-      // web capped to 1 use (the live board answers most questions with none).
-      // The main chat can run a stronger model with freer web.
-      const inDraft = !!draftContext;
-      return await runChatTurn(ops, messages ?? [], {
-        draftContext,
-        model: inDraft ? process.env.ANTHROPIC_DRAFT_MODEL ?? process.env.ANTHROPIC_MODEL : undefined,
-        maxTokens: inDraft ? 1500 : 4096,
-        maxIterations: inDraft ? 8 : 12,
-        web: { maxUses: inDraft ? 1 : 3 },
-      });
+      const body = (req.body as {
+        messages?: ChatMessage[];
+        draftContext?: DraftContextRef;
+        conversationId?: string;
+        message?: string;
+      }) ?? {};
+
+      if (body.draftContext) {
+        return await runChatTurn(ops, body.messages ?? [], {
+          draftContext: body.draftContext,
+          model: process.env.ANTHROPIC_DRAFT_MODEL ?? process.env.ANTHROPIC_MODEL,
+          maxTokens: 1500,
+          maxIterations: 8,
+          web: { maxUses: 1 },
+        });
+      }
+
+      if (typeof body.message !== "string" || !body.message.trim()) {
+        return reply.status(400).send({ error: "message is required" });
+      }
+      return await runPersistedTurn(
+        ops,
+        ops.chatHistory,
+        { conversationId: body.conversationId, message: body.message },
+        { maxTokens: 4096, maxIterations: 12, web: { maxUses: 3 } },
+      );
     } catch (err) {
       if (err instanceof ChatUnavailableError) return reply.status(503).send({ error: err.message });
       return fail(reply, err);
     }
   });
+
+  // --- chat history (conversation list / resume / rename / delete) ----------
+  app.get("/api/conversations", h(() => ops.chatHistory.list()));
+  app.get(
+    "/api/conversations/:id",
+    h(async (req) => {
+      const convo = await ops.chatHistory.get(id(req));
+      if (!convo) throw new Error(`unknown conversationId "${id(req)}"`);
+      return convo;
+    }),
+  );
+  app.patch(
+    "/api/conversations/:id",
+    h((req) => ops.chatHistory.rename(id(req), (req.body as { title?: string })?.title ?? "")),
+  );
+  app.delete("/api/conversations/:id", h(async (req) => (await ops.chatHistory.delete(id(req)), { ok: true })));
 
   // --- static GUI (single-deployable prod) ---------------------------------
   // Serve the built web app when present (cloud). In dev, Vite serves it and

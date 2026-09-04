@@ -3,6 +3,8 @@ import { authHeaders, getToken, signalAuthRequired } from "./auth";
 import type {
   AuditEvent,
   AuthStatus,
+  Conversation,
+  ConversationSummary,
   Draft,
   DraftBoard,
   DraftRecommendation,
@@ -77,6 +79,18 @@ export const api = {
   setSleeperToken: (token: string) =>
     send<SleeperTokenStatus>("PUT", "/api/secrets/sleeper", { token }),
   clearSleeperToken: () => send<SleeperTokenStatus>("DELETE", "/api/secrets/sleeper"),
+
+  // --- chat history ---
+  conversations: () => get<ConversationSummary[]>("/api/conversations"),
+  conversation: (id: string) => get<Conversation>(`/api/conversations/${id}`),
+  sendChat: (message: string, conversationId?: string) =>
+    send<{ conversationId: string; reply: string; toolCalls: string[] }>("POST", "/api/chat", {
+      message,
+      conversationId,
+    }),
+  renameConversation: (id: string, title: string) =>
+    send<Conversation>("PATCH", `/api/conversations/${id}`, { title }),
+  deleteConversation: (id: string) => send<{ ok: true }>("DELETE", `/api/conversations/${id}`),
 };
 
 /** Tiny async-data hook: re-runs when any dep changes. */

@@ -91,6 +91,32 @@ export interface SleeperTokenStatus {
   editable: boolean;
 }
 
+// Chat history (mirrors src/history/history.ts).
+
+export interface ChatStoredMessage {
+  role: "user" | "assistant";
+  content: string;
+  at: number;
+}
+
+export interface Conversation {
+  id: string;
+  title: string;
+  leagueId?: string;
+  createdAt: number;
+  updatedAt: number;
+  messages: ChatStoredMessage[];
+}
+
+export interface ConversationSummary {
+  id: string;
+  title: string;
+  leagueId?: string;
+  createdAt: number;
+  updatedAt: number;
+  messageCount: number;
+}
+
 export interface Draft {
   draftId: string;
   status: string;

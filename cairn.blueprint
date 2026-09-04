@@ -73,6 +73,10 @@ System SleepBot "MCP server connecting Claude to fantasy football leagues" id "s
         path "./src/chat"
     }
 
+    Module History "Persistent chat conversations in the store (list / resume / rename / delete)" id "sleepbot.history" @cloud {
+        path "./src/history"
+    }
+
     Module Gui "React (Vite) front-end: roster, standings/matchups, audit log, chat panel" id "sleepbot.gui" @phase3 {
         path "./web"
     }
@@ -135,6 +139,10 @@ sleepbot.api              -> sleepbot.gate               "verifies a login JWT o
 
 # UI-editable config + secrets — config lives in the store, secrets sealed at rest
 sleepbot.core             -> sleepbot.crypto             "seals UI-set secrets (the Sleeper token) before storing them"
+
+# Chat history — persistent conversations (a store sink; no back-edge, no cycle)
+sleepbot.core             -> sleepbot.history            "composes the conversation store onto the context"
+sleepbot.chat             -> sleepbot.history            "loads/saves the active conversation around a persisted turn"
 
 # Drafts — read-only board + recommendations assistant
 sleepbot.draft            -> sleepbot.adapters.interface  "reads drafts, picks, and the player pool"
