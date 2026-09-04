@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { authHeaders, signalAuthRequired } from "./auth";
+import { authHeaders, getToken, signalAuthRequired } from "./auth";
 import type {
   AuditEvent,
   AuthStatus,
@@ -13,12 +13,14 @@ import type {
 } from "./types";
 
 async function get<T>(url: string): Promise<T> {
+  const sent = getToken(); // token this request carries (may be null in a pre-login tab)
   const res = await fetch(url, { headers: authHeaders() });
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
     // A login-required 401 (distinct from a Sleeper-token reauth) sends us back
-    // to the login screen; anything else surfaces as a normal error.
-    if (res.status === 401 && body.code === "auth_required") signalAuthRequired();
+    // to the login screen — unless the stored token changed since we sent, in
+    // which case signalAuthRequired heals instead of wiping.
+    if (res.status === 401 && body.code === "auth_required") signalAuthRequired(sent);
     throw new Error(body.error ?? `${res.status} ${res.statusText}`);
   }
   return res.json() as Promise<T>;

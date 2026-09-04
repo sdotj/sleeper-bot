@@ -38,17 +38,37 @@ function subscribe(l: () => void): () => void {
   };
 }
 
+/**
+ * The freshest token in this browser — read from localStorage on every call, not
+ * from the in-memory snapshot. A tab opened before login (whose snapshot is still
+ * null) then sends the token another tab stored. Capture it right before a fetch
+ * so you can hand it to {@link signalAuthRequired} if that request 401s.
+ */
 export function getToken(): string | null {
-  return state.token;
+  return readToken();
 }
 
 /** Merge the bearer header into an outgoing request's headers (no-op without a token). */
 export function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
-  return state.token ? { ...extra, Authorization: `Bearer ${state.token}` } : extra;
+  const token = readToken();
+  return token ? { ...extra, Authorization: `Bearer ${token}` } : extra;
 }
 
-/** The API client calls this on a 401 whose body carries `code: "auth_required"`. */
-export function signalAuthRequired(): void {
+/**
+ * Called on a 401 whose body carried `code: "auth_required"`. `sentToken` is the
+ * token the failing request actually carried (undefined/null if it went out
+ * without one). We only tear the session down when the token that was *rejected*
+ * is still the current stored token — so a tokenless in-flight request that races
+ * a fresh login (or a call that just missed the header) can't wipe a good token.
+ * Otherwise we surface the still-valid token and quietly self-heal.
+ */
+export function signalAuthRequired(sentToken?: string | null): void {
+  const current = readToken();
+  if (current && sentToken !== current) {
+    setState({ token: current, authRequired: false });
+    return;
+  }
+  // No stored token, or the stored token itself was rejected → require login.
   try {
     localStorage.removeItem(TOKEN_KEY);
   } catch {
@@ -87,4 +107,15 @@ export function logout(): void {
 
 export function useAuth(): AuthState {
   return useSyncExternalStore(subscribe, () => state, () => state);
+}
+
+// Keep every tab in sync: a login/logout in one tab writes localStorage, which
+// fires `storage` in the others (never in the tab that made the change). A fresh
+// token there heals to the app; a cleared token sends it to the login screen.
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key !== null && e.key !== TOKEN_KEY) return; // key === null on localStorage.clear()
+    const token = readToken();
+    setState({ token, authRequired: !token });
+  });
 }

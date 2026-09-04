@@ -1187,16 +1187,16 @@
           "kind": "function",
           "signature": "export_statement:export async function login(username: string, password: string): Promise<void> { const res = await fetch(\"/api/login\", { method: \"POST\", headers: { \"content-type\": \"application/json\" }, body: JSON.stringify({ username, password }), }); if (!res.ok) { const body = (await res.json().catch(() => ({}))) as { error?: string }; throw new Error(body.error ?? `login failed (${res.status})`); } const { token } = (await res.json()) as { token: string }; try { localStorage.setItem(TOKEN_KEY, token); } catch { /* ignore — token still held in memory for this session */ } setState({ token, authRequired: false }); }",
           "file": "web/src/lib/auth.ts",
-          "line": 60,
-          "end_line": 77
+          "line": 80,
+          "end_line": 97
         },
         {
           "name": "export const api = {\n  leagues: () => get<League[]>(\"/api/leagues\"),\n  myRoster: (id: string) => get<Roster | null>(`/api/leagues/${id}/my-roster`),\n  standings: (id: string) => get<StandingRow[]>(`/api/leagues/${id}/standings`),\n  matchups: (id: string, week?: number) =>\n    get<Matchup[]>(`/api/leagues/${id}/matchups${week ? `?week=${week}` : \"\"}`),\n  auth: (id: string) => get<AuthStatus>(`/api/leagues/${id}/auth`),\n  audit: (id: string) => get<AuditEvent[]>(`/api/audit?leagueId=${encodeURIComponent(id)}`),\n  drafts: (id: string) => get<Draft[]>(`/api/leagues/${id}/drafts`),\n  draftBoard: (id: string, draftId: string, yourRosterId?: number) =>\n    get<DraftBoard>(\n      `/api/leagues/${id}/drafts/${draftId}/board${yourRosterId != null ? `?yourRosterId=${yourRosterId}` : \"\"}`,\n    ),\n  draftRecs: (\n    id: string,\n    draftId: string,\n    o: { rosterId?: number; position?: string; limit?: number } = {},\n  ) => {\n    const q = new URLSearchParams();\n    if (o.rosterId != null) q.set(\"rosterId\", String(o.rosterId));\n    if (o.position) q.set(\"position\", o.position);\n    if (o.limit != null) q.set(\"limit\", String(o.limit));\n    return get<DraftRecommendation[]>(`/api/leagues/${id}/drafts/${draftId}/recommendations?${q}`);\n  },\n};",
           "kind": "variable",
           "signature": "export_statement:export const api = { leagues: () => get<League[]>(\"/api/leagues\"), myRoster: (id: string) => get<Roster | null>(`/api/leagues/${id}/my-roster`), standings: (id: string) => get<StandingRow[]>(`/api/leagues/${id}/standings`), matchups: (id: string, week?: number) => get<Matchup[]>(`/api/leagues/${id}/matchups${week ? `?week=${week}` : \"\"}`), auth: (id: string) => get<AuthStatus>(`/api/leagues/${id}/auth`), audit: (id: string) => get<AuditEvent[]>(`/api/audit?leagueId=${encodeURIComponent(id)}`), drafts: (id: string) => get<Draft[]>(`/api/leagues/${id}/drafts`), draftBoard: (id: string, draftId: string, yourRosterId?: number) => get<DraftBoard>( `/api/leagues/${id}/drafts/${draftId}/board${yourRosterId != null ? `?yourRosterId=${yourRosterId}` : \"\"}`, ), draftRecs: ( id: string, draftId: string, o: { rosterId?: number; position?: string; limit?: number } = {}, ) => { const q = new URLSearchParams(); if (o.rosterId != null) q.set(\"rosterId\", String(o.rosterId)); if (o.position) q.set(\"position\", o.position); if (o.limit != null) q.set(\"limit\", String(o.limit)); return get<DraftRecommendation[]>(`/api/leagues/${id}/drafts/${draftId}/recommendations?${q}`); }, };",
           "file": "web/src/lib/api.ts",
-          "line": 27,
-          "end_line": 51
+          "line": 29,
+          "end_line": 53
         },
         {
           "name": "export default defineConfig({\n  plugins: [react(), tailwindcss()],\n  server: {\n    port: 5173,\n    proxy: { \"/api\": process.env.SLEEPBOT_API ?? \"http://127.0.0.1:8787\" },\n  },\n});",
@@ -1281,10 +1281,10 @@
         {
           "name": "authHeaders",
           "kind": "function",
-          "signature": "export_statement:export function authHeaders(extra: Record<string, string> = {}): Record<string, string> { return state.token ? { ...extra, Authorization: `Bearer ${state.token}` } : extra; }",
+          "signature": "export_statement:export function authHeaders(extra: Record<string, string> = {}): Record<string, string> { const token = readToken(); return token ? { ...extra, Authorization: `Bearer ${token}` } : extra; }",
           "file": "web/src/lib/auth.ts",
-          "line": 46,
-          "end_line": 48
+          "line": 52,
+          "end_line": 55
         },
         {
           "name": "cn",
@@ -1297,42 +1297,42 @@
         {
           "name": "getToken",
           "kind": "function",
-          "signature": "export_statement:export function getToken(): string | null { return state.token; }",
+          "signature": "export_statement:export function getToken(): string | null { return readToken(); }",
           "file": "web/src/lib/auth.ts",
-          "line": 41,
-          "end_line": 43
+          "line": 47,
+          "end_line": 49
         },
         {
           "name": "logout",
           "kind": "function",
           "signature": "export_statement:export function logout(): void { try { localStorage.removeItem(TOKEN_KEY); } catch { /* ignore */ } setState({ token: null, authRequired: true }); }",
           "file": "web/src/lib/auth.ts",
-          "line": 79,
-          "end_line": 86
+          "line": 99,
+          "end_line": 106
         },
         {
           "name": "signalAuthRequired",
           "kind": "function",
-          "signature": "export_statement:export function signalAuthRequired(): void { try { localStorage.removeItem(TOKEN_KEY); } catch { /* ignore */ } setState({ token: null, authRequired: true }); }",
+          "signature": "export_statement:export function signalAuthRequired(sentToken?: string | null): void { const current = readToken(); if (current && sentToken !== current) { setState({ token: current, authRequired: false }); return; } // No stored token, or the stored token itself was rejected → require login. try { localStorage.removeItem(TOKEN_KEY); } catch { /* ignore */ } setState({ token: null, authRequired: true }); }",
           "file": "web/src/lib/auth.ts",
-          "line": 51,
-          "end_line": 58
+          "line": 65,
+          "end_line": 78
         },
         {
           "name": "useAsync",
           "kind": "function",
           "signature": "export_statement:export function useAsync<T>(fn: () => Promise<T>, deps: unknown[]) { const [state, setState] = useState<{ data?: T; error?: string; loading: boolean }>({ loading: true, }); useEffect(() => { let live = true; // Keep any previous data visible while refetching (e.g. draft polling) so // the UI doesn't flash to a spinner on every refresh. setState((s) => ({ data: s.data, loading: true })); fn() .then((data) => live && setState({ data, loading: false })) .catch((err) => live && setState((s) => ({ data: s.data, error: (err as Error).message, loading: false }))); return () => { live = false; }; // eslint-disable-next-line react-hooks/exhaustive-deps }, deps); return state; }",
           "file": "web/src/lib/api.ts",
-          "line": 54,
-          "end_line": 72
+          "line": 56,
+          "end_line": 74
         },
         {
           "name": "useAuth",
           "kind": "function",
           "signature": "export_statement:export function useAuth(): AuthState { return useSyncExternalStore(subscribe, () => state, () => state); }",
           "file": "web/src/lib/auth.ts",
-          "line": 88,
-          "end_line": 90
+          "line": 108,
+          "end_line": 110
         },
         {
           "name": "AsyncState",

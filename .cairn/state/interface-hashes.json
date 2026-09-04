@@ -11,7 +11,7 @@
   "sleepbot.core:src/core": "2697ec117d995464",
   "sleepbot.draft:src/draft": "841ca5bda6d93333",
   "sleepbot.gate:src/gate": "7ad942957c3cd24c",
-  "sleepbot.gui:web": "34afc071dc948326",
+  "sleepbot.gui:web": "9f61af2d70027a1b",
   "sleepbot.notify:src/notify": "a2c0571b0a555b77",
   "sleepbot.rules:src/rules": "e1f27515c3a738ec",
   "sleepbot.server:src/index.ts": "bd60acb658c79e45",
