@@ -149,6 +149,37 @@ export async function runChatTurn(
   return { reply: "Stopped after too many tool calls — try a narrower question.", toolCalls };
 }
 
+/**
+ * Ask a fast model for a short title for a new conversation, from its first
+ * exchange (dec.chat-history-memory). Returns null (caller falls back to the
+ * first-message title) when there's no key or on any error — titling must never
+ * break a chat turn.
+ */
+export async function generateTitle(userMsg: string, reply: string, model?: string): Promise<string | null> {
+  if (!process.env.ANTHROPIC_API_KEY) return null;
+  try {
+    const client = new Anthropic();
+    const res = await client.messages.create({
+      model: model ?? process.env.ANTHROPIC_DRAFT_MODEL ?? process.env.ANTHROPIC_MODEL ?? "claude-haiku-4-5-20251001",
+      max_tokens: 24,
+      system:
+        "You title fantasy-football chat threads. Reply with ONLY a 2-5 word title — no quotes, no punctuation, no 'Title:' prefix.",
+      messages: [{ role: "user", content: `First message: ${userMsg}\n\nAssistant reply: ${reply}` }],
+    });
+    const text = res.content
+      .filter((b): b is Anthropic.TextBlock => b.type === "text")
+      .map((b) => b.text)
+      .join(" ")
+      .trim()
+      .replace(/^["']|["']$/g, "")
+      .replace(/[.\s]+$/, "")
+      .trim();
+    return text ? text.slice(0, 60) : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Build a compact live-draft snapshot to prepend to the system prompt. */
 async function draftContextBlock(ops: SleepBotOperations, ref: DraftContextRef): Promise<string> {
   try {

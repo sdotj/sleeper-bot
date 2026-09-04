@@ -73,10 +73,25 @@ describe("runPersistedTurn", () => {
     expect(passedOpts.systemExtra).toContain("I'm rebuilding, value youth");
   });
 
-  it("passes no systemExtra when memory is empty", async () => {
+  it("always injects the proactive-memory guidance, even with empty memory", async () => {
     const runner = vi.fn(async () => ({ reply: "ok", toolCalls: [] }));
     await runPersistedTurn(opsWith(), new ChatHistory(new InMemoryStore()), { message: "hi" }, {}, runner);
-    expect(runner.mock.calls[0][2].systemExtra).toBeUndefined();
+    const systemExtra = runner.mock.calls[0][2].systemExtra ?? "";
+    expect(systemExtra).toContain("remember_fact");
+    expect(systemExtra).not.toContain("## MEMORY"); // no notes block when empty
+  });
+
+  it("auto-titles a new thread from the titler, falling back to the first message", async () => {
+    const runner = vi.fn(async () => ({ reply: "start Chase", toolCalls: [] }));
+    const history = new ChatHistory(new InMemoryStore());
+
+    // Titler returns a title -> used.
+    const r = await runPersistedTurn(opsWith(), history, { message: "who do I start?" }, {}, runner, async () => "Start/Sit Advice");
+    expect((await history.get(r.conversationId))?.title).toBe("Start/Sit Advice");
+
+    // Titler returns null -> keep the first-message title.
+    const r2 = await runPersistedTurn(opsWith(), history, { message: "trade help please" }, {}, runner, async () => null);
+    expect((await history.get(r2.conversationId))?.title).toBe("trade help please");
   });
 });
 

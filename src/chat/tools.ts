@@ -47,7 +47,7 @@ export const CHAT_TOOLS: Anthropic.Tool[] = [
   {
     name: "remember_fact",
     description:
-      "Save a short, durable fact or preference to long-term MEMORY so it applies in every future chat (e.g. 'I'm rebuilding and value youth', 'I stream defenses'). Only for lasting facts the user wants remembered — not one-off answers.",
+      "Save a short, durable fact or preference to long-term MEMORY so it applies in every future chat (e.g. 'I'm rebuilding and value youth', 'I stream defenses', '12-team half-PPR dynasty'). Call this PROACTIVELY whenever the user reveals a lasting fact about themselves, their team, or their league — you do not need to be asked. Skip one-off questions, this week's matchup, and ephemeral state; don't duplicate what's already in MEMORY.",
     input_schema: { type: "object", properties: { text: { type: "string" } }, required: ["text"] },
   },
   {

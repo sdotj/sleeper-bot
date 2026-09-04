@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { InMemoryStore } from "../audit/index.js";
-import { MemoryStore, memoryBlock } from "./index.js";
+import { MemoryStore, memoryBlock, MEMORY_GUIDANCE } from "./index.js";
 
 describe("MemoryStore", () => {
   it("adds, lists oldest-first, and removes", async () => {
@@ -23,6 +23,13 @@ describe("MemoryStore", () => {
     expect(await m.list()).toHaveLength(1);
     await expect(m.add("   ")).rejects.toThrow(/required/);
   });
+
+  it("caps the note count, pruning the oldest", async () => {
+    const m = new MemoryStore(new InMemoryStore(), 3);
+    for (let i = 0; i < 5; i++) await m.add(`fact ${i}`, "model");
+    const list = await m.list();
+    expect(list.map((n) => n.text)).toEqual(["fact 2", "fact 3", "fact 4"]); // oldest two pruned
+  });
 });
 
 describe("memoryBlock", () => {
@@ -33,6 +40,10 @@ describe("memoryBlock", () => {
     const block = memoryBlock(await m.list());
     expect(block).toContain("## MEMORY");
     expect(block).toContain(`[${note.id}] Only start Chase at flex in a pinch`);
-    expect(block).toContain("remember_fact");
+  });
+
+  it("MEMORY_GUIDANCE tells the model to capture facts proactively", () => {
+    expect(MEMORY_GUIDANCE).toContain("remember_fact");
+    expect(MEMORY_GUIDANCE.toLowerCase()).toContain("proactively");
   });
 });

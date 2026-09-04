@@ -2,11 +2,12 @@ import type { SleepBotOperations } from "../core/index.js";
 import {
   ChatHistory,
   memoryBlock,
+  MEMORY_GUIDANCE,
   newConversation,
   trimForModel,
   type Conversation,
 } from "../history/index.js";
-import { runChatTurn, type ChatMessage } from "./chatLoop.js";
+import { generateTitle, runChatTurn, type ChatMessage } from "./chatLoop.js";
 
 /** The model-loop function, injectable so the orchestration is testable offline. */
 export type ChatRunner = (
@@ -14,6 +15,9 @@ export type ChatRunner = (
   history: ChatMessage[],
   opts: Parameters<typeof runChatTurn>[2],
 ) => Promise<{ reply: string; toolCalls: string[] }>;
+
+/** Generates a thread title; injectable for offline tests. */
+export type Titler = (userMsg: string, reply: string) => Promise<string | null>;
 
 export interface PersistedTurnInput {
   conversationId?: string;
@@ -34,6 +38,7 @@ export async function runPersistedTurn(
   input: PersistedTurnInput,
   opts: Parameters<typeof runChatTurn>[2] = {},
   runner: ChatRunner = runChatTurn,
+  titler: Titler = generateTitle,
 ): Promise<{ conversationId: string; reply: string; toolCalls: string[] }> {
   const message = input.message.trim();
   if (!message) throw new Error("message is required");
@@ -45,13 +50,19 @@ export async function runPersistedTurn(
   const convo: Conversation = existing ?? newConversation(message, input.leagueId);
 
   const modelHistory = trimForModel([...convo.messages, { role: "user", content: message, at: Date.now() }]);
-  // Inject long-term memory into the system prompt for this turn.
-  const memoryExtra = memoryBlock(await ops.memory.list());
-  const turnOpts = memoryExtra
-    ? { ...opts, systemExtra: [opts.systemExtra, memoryExtra].filter(Boolean).join("\n\n") }
-    : opts;
+  // Always inject the proactive-memory guidance; add the current notes when any
+  // exist. This makes the assistant capture facts from the very first message.
+  const systemExtra = [opts.systemExtra, MEMORY_GUIDANCE, memoryBlock(await ops.memory.list())]
+    .filter(Boolean)
+    .join("\n\n");
   // May throw (e.g. ChatUnavailableError) BEFORE we persist anything.
-  const { reply, toolCalls } = await runner(ops, modelHistory, turnOpts);
+  const { reply, toolCalls } = await runner(ops, modelHistory, { ...opts, systemExtra });
+
+  // Auto-title a brand-new thread from its first exchange (best-effort).
+  if (!existing) {
+    const title = await titler(message, reply).catch(() => null);
+    if (title) convo.title = title;
+  }
 
   const now = Date.now();
   convo.messages.push({ role: "user", content: message, at: now });

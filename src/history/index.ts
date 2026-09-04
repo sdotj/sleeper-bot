@@ -8,4 +8,4 @@ export {
   type StoredMessage,
   type ModelMessage,
 } from "./history.js";
-export { MemoryStore, memoryBlock, type MemoryNote } from "./memory.js";
+export { MemoryStore, memoryBlock, MEMORY_GUIDANCE, type MemoryNote } from "./memory.js";

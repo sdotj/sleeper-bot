@@ -57,6 +57,16 @@ the id shown in the block); the user curates the list via `GET/POST/DELETE
 /api/memory` and a memory editor in the Settings panel. `add()` de-dupes on
 identical text. `runChatTurn` gained a `systemExtra` hook for the injection.
 
+**Proactive capture + cap + auto-titling (2026-09-04 follow-up).** Memory is now
+captured PROACTIVELY: a standing `MEMORY_GUIDANCE` block is injected every
+persisted turn (even with zero notes), and the `remember_fact` description tells
+the model to save durable facts without being asked. To keep that bounded,
+`MemoryStore` caps notes (default 50, constructor-configurable) and prunes the
+oldest past the cap. New threads are auto-titled from their first exchange by a
+fast model (`generateTitle`, injectable as `titler`); it falls back to the
+first-message title when there's no key or on any error, so titling never breaks
+a turn.
+
 ## Rationale
 
 Server-owned history is the clean base that also enables memory and retrieval;

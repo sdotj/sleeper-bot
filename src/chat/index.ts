@@ -1,5 +1,6 @@
 export {
   runChatTurn,
+  generateTitle,
   ChatUnavailableError,
   type ChatMessage,
   type DraftContextRef,

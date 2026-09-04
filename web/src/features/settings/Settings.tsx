@@ -171,7 +171,8 @@ function MemoryPanel() {
       <div className="space-y-3 p-5">
         <p className="text-sm text-muted">
           Durable facts the assistant applies in every chat — your team’s situation, preferences, league
-          quirks. The assistant can add these when you say “remember that…”, or add your own here.
+          quirks. It saves these on its own as it learns them (marked <span className="text-accent">auto</span>),
+          you can add your own, and it keeps the most recent 50. Delete anything you don’t want kept.
         </p>
         {error && <p className="text-sm text-danger">⚠ {error}</p>}
 
