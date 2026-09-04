@@ -44,6 +44,17 @@ export const CHAT_TOOLS: Anthropic.Tool[] = [
     description: "SEND a previously-proposed action. Only call after the user has explicitly confirmed they want it sent.",
     input_schema: { type: "object", properties: { actionId: { type: "string" } }, required: ["actionId"] },
   },
+  {
+    name: "remember_fact",
+    description:
+      "Save a short, durable fact or preference to long-term MEMORY so it applies in every future chat (e.g. 'I'm rebuilding and value youth', 'I stream defenses'). Only for lasting facts the user wants remembered — not one-off answers.",
+    input_schema: { type: "object", properties: { text: { type: "string" } }, required: ["text"] },
+  },
+  {
+    name: "forget_fact",
+    description: "Remove one MEMORY note by the [id] shown next to it in the MEMORY block. Use when the user asks you to forget something.",
+    input_schema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
+  },
 ];
 
 /** Execute a Claude tool call against the shared operations. */
@@ -73,6 +84,8 @@ export async function dispatchTool(ops: SleepBotOperations, name: string, input:
     case "propose_waiver_claim":
       return proposalOutcome(await ops.proposeWaiverClaim(a.leagueId, { rosterId: a.rosterId, addPlayerId: a.addPlayerId, dropPlayerId: a.dropPlayerId, faabBid: a.faabBid }));
     case "execute_action": return ops.executeAction(a.actionId);
+    case "remember_fact": return ops.memory.add(a.text, "model");
+    case "forget_fact": { await ops.memory.remove(a.id); return { ok: true, forgotten: a.id }; }
     default: throw new Error(`unknown tool: ${name}`);
   }
 }

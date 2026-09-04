@@ -1,6 +1,7 @@
 import type { SleepBotOperations } from "../core/index.js";
 import {
   ChatHistory,
+  memoryBlock,
   newConversation,
   trimForModel,
   type Conversation,
@@ -44,8 +45,13 @@ export async function runPersistedTurn(
   const convo: Conversation = existing ?? newConversation(message, input.leagueId);
 
   const modelHistory = trimForModel([...convo.messages, { role: "user", content: message, at: Date.now() }]);
+  // Inject long-term memory into the system prompt for this turn.
+  const memoryExtra = memoryBlock(await ops.memory.list());
+  const turnOpts = memoryExtra
+    ? { ...opts, systemExtra: [opts.systemExtra, memoryExtra].filter(Boolean).join("\n\n") }
+    : opts;
   // May throw (e.g. ChatUnavailableError) BEFORE we persist anything.
-  const { reply, toolCalls } = await runner(ops, modelHistory, opts);
+  const { reply, toolCalls } = await runner(ops, modelHistory, turnOpts);
 
   const now = Date.now();
   convo.messages.push({ role: "user", content: message, at: now });

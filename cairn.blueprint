@@ -73,7 +73,7 @@ System SleepBot "MCP server connecting Claude to fantasy football leagues" id "s
         path "./src/chat"
     }
 
-    Module History "Persistent chat conversations in the store (list / resume / rename / delete)" id "sleepbot.history" @cloud {
+    Module History "Chat persistence in the store: conversations (list/resume/rename/delete) + long-term memory injected into every chat" id "sleepbot.history" @cloud {
         path "./src/history"
     }
 

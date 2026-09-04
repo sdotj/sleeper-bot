@@ -117,6 +117,13 @@ export interface ConversationSummary {
   messageCount: number;
 }
 
+export interface MemoryNote {
+  id: string;
+  text: string;
+  createdAt: number;
+  source: "user" | "model";
+}
+
 export interface Draft {
   draftId: string;
   status: string;

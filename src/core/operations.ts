@@ -5,7 +5,7 @@ import type {
   WaiverClaimPayload,
 } from "../adapters/LeagueAdapter.js";
 import type { ProposedAction } from "../actions/index.js";
-import type { ChatHistory } from "../history/index.js";
+import type { ChatHistory, MemoryStore } from "../history/index.js";
 import type { AppContext } from "./context.js";
 
 /**
@@ -160,5 +160,10 @@ export class SleepBotOperations {
   // chat path already calls the chat module directly, not via a facade method).
   get chatHistory(): ChatHistory {
     return this.ctx.chatHistory;
+  }
+
+  /** Long-term chat memory (the memory tools + the /api/memory routes use this). */
+  get memory(): MemoryStore {
+    return this.ctx.memory;
   }
 }

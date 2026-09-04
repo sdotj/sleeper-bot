@@ -210,6 +210,11 @@ export async function buildApiServer(ops: SleepBotOperations): Promise<FastifyIn
   );
   app.delete("/api/conversations/:id", h(async (req) => (await ops.chatHistory.delete(id(req)), { ok: true })));
 
+  // --- long-term memory (durable facts injected into every chat) -----------
+  app.get("/api/memory", h(() => ops.memory.list()));
+  app.post("/api/memory", h((req) => ops.memory.add((req.body as { text?: string })?.text ?? "", "user")));
+  app.delete("/api/memory/:id", h(async (req) => (await ops.memory.remove(id(req)), { ok: true })));
+
   // --- static GUI (single-deployable prod) ---------------------------------
   // Serve the built web app when present (cloud). In dev, Vite serves it and
   // this is skipped. Non-API GETs fall back to index.html for the SPA.

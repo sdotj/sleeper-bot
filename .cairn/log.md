@@ -45,3 +45,4 @@
 - scan: nodes=24, findings=19, errors=0
 - scan: nodes=24, findings=19, errors=0
 - scan: nodes=25, findings=20, errors=0
+- scan: nodes=25, findings=20, errors=0

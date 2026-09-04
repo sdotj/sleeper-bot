@@ -49,6 +49,8 @@ export async function runChatTurn(
     maxIterations?: number;
     maxTokens?: number;
     draftContext?: DraftContextRef;
+    /** Extra text appended to the system prompt (e.g. the MEMORY block). */
+    systemExtra?: string;
     /** Enable the web-search server tool (on-demand). false disables it. */
     web?: { maxUses?: number } | false;
   } = {},
@@ -81,9 +83,12 @@ export async function runChatTurn(
 
   // Resolve the live draft snapshot once at the start of the turn (seconds old
   // when the model answers). It's re-fetched fresh on the next turn.
-  const system = opts.draftContext
+  let system = opts.draftContext
     ? `${SYSTEM}\n\n${await draftContextBlock(ops, opts.draftContext)}`
     : SYSTEM;
+  // Durable memory (and any other caller-supplied context) rides along in the
+  // system prompt so the assistant applies it every turn (dec.chat-history-memory).
+  if (opts.systemExtra?.trim()) system += `\n\n${opts.systemExtra.trim()}`;
 
   for (let i = 0; i < maxIterations; i++) {
     const res = await client.messages.create({

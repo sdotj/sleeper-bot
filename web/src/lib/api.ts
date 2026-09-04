@@ -10,6 +10,7 @@ import type {
   DraftRecommendation,
   League,
   Matchup,
+  MemoryNote,
   Roster,
   SleepBotConfigDoc,
   SleeperTokenStatus,
@@ -91,6 +92,11 @@ export const api = {
   renameConversation: (id: string, title: string) =>
     send<Conversation>("PATCH", `/api/conversations/${id}`, { title }),
   deleteConversation: (id: string) => send<{ ok: true }>("DELETE", `/api/conversations/${id}`),
+
+  // --- long-term memory ---
+  memory: () => get<MemoryNote[]>("/api/memory"),
+  addMemory: (text: string) => send<MemoryNote>("POST", "/api/memory", { text }),
+  deleteMemory: (id: string) => send<{ ok: true }>("DELETE", `/api/memory/${id}`),
 };
 
 /** Tiny async-data hook: re-runs when any dep changes. */

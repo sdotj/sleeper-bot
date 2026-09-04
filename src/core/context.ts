@@ -20,7 +20,7 @@ import {
 import { RulesEngine, loadRulesConfig } from "../rules/index.js";
 import { ActionPipeline, PendingStore } from "../actions/index.js";
 import { DraftAssistant } from "../draft/index.js";
-import { ChatHistory } from "../history/index.js";
+import { ChatHistory, MemoryStore } from "../history/index.js";
 import { ConfigRegistry } from "../config/loader.js";
 import type { LeagueEntry } from "../config/schema.js";
 
@@ -49,6 +49,8 @@ export interface AppContext {
   draft: DraftAssistant;
   /** Persistent chat conversations (main chat history). */
   chatHistory: ChatHistory;
+  /** Long-term chat memory (durable facts injected into every chat). */
+  memory: MemoryStore;
   /** The shared persistence store (audit, pending, agent outbox). */
   store: Store;
 
@@ -116,6 +118,7 @@ export async function buildAppContext(config: ConfigRegistry, storeOverride?: St
   const pipeline = new ActionPipeline({ rules, audit, pending, valueFor, adapterFor });
   const draft = new DraftAssistant({ adapterFor, valueFor });
   const chatHistory = new ChatHistory(store);
+  const memory = new MemoryStore(store);
 
   return {
     config,
@@ -125,6 +128,7 @@ export async function buildAppContext(config: ConfigRegistry, storeOverride?: St
     audit,
     draft,
     chatHistory,
+    memory,
     store,
 
     async reload() {

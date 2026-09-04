@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../../lib/api";
-import type { LeagueConfig, SleepBotConfigDoc, SleeperTokenStatus } from "../../lib/types";
+import type { LeagueConfig, MemoryNote, SleepBotConfigDoc, SleeperTokenStatus } from "../../lib/types";
 import { Badge, Button, Card, CardHeader, Select, TextInput } from "../../components/ui";
 
 /**
@@ -13,7 +13,112 @@ export function Settings() {
     <div className="space-y-5">
       <LeaguesEditor />
       <SleeperTokenPanel />
+      <MemoryPanel />
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Assistant memory
+// ---------------------------------------------------------------------------
+
+function MemoryPanel() {
+  const [notes, setNotes] = useState<MemoryNote[] | null>(null);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void refresh();
+  }, []);
+
+  async function refresh() {
+    setError(null);
+    try {
+      setNotes(await api.memory());
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
+  async function add() {
+    const t = text.trim();
+    if (!t) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.addMemory(t);
+      setText("");
+      await refresh();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove(id: string) {
+    try {
+      await api.deleteMemory(id);
+      await refresh();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader title="Assistant memory" right={notes ? <Badge>{notes.length} note{notes.length === 1 ? "" : "s"}</Badge> : null} />
+      <div className="space-y-3 p-5">
+        <p className="text-sm text-muted">
+          Durable facts the assistant applies in every chat — your team’s situation, preferences, league
+          quirks. The assistant can add these when you say “remember that…”, or add your own here.
+        </p>
+        {error && <p className="text-sm text-danger">⚠ {error}</p>}
+
+        <div className="flex items-end gap-2">
+          <label className="block flex-1 space-y-1">
+            <span className="text-xs font-medium text-muted">Add a note</span>
+            <TextInput
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void add();
+                }
+              }}
+              placeholder="e.g. I'm rebuilding — value youth over win-now"
+              disabled={busy}
+              className="w-full"
+            />
+          </label>
+          <Button variant="primary" onClick={add} disabled={busy || !text.trim()}>
+            Add
+          </Button>
+        </div>
+
+        {notes?.length === 0 && <p className="text-sm text-faint">No memory yet.</p>}
+        <ul className="space-y-1.5">
+          {notes?.map((n) => (
+            <li
+              key={n.id}
+              className="group flex items-center gap-2 rounded-lg border border-border bg-surface-2/50 px-3 py-2 text-sm"
+            >
+              <span className="flex-1">{n.text}</span>
+              {n.source === "model" && <Badge variant="accent">auto</Badge>}
+              <button
+                className="text-faint hover:text-danger"
+                onClick={() => void remove(n.id)}
+                title="Forget"
+              >
+                ✕
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </Card>
   );
 }
 

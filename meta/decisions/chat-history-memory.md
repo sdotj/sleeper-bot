@@ -9,8 +9,8 @@ status: accepted
 date: 2026-09-04
 revisit_triggers:
   - "If threads grow large enough that char-budget replay drops useful context — add pgvector semantic retrieval"
-  - "If chat becomes multi-user — conversations would need per-user scoping (data/users/…)"
-  - "Phase 2: long-term memory (a remember/forget tool + a memory editor, injected into the system prompt)"
+  - "If chat becomes multi-user — conversations and memory would need per-user scoping (data/users/…)"
+  - "If memory grows large — the whole block is injected every turn; may need relevance selection"
 ---
 # Chat history & memory
 
@@ -48,10 +48,14 @@ after dec.ui-config-editing) makes persistence possible. The roadmap item is
 - **GUI:** a `ChatPane` with a conversation sidebar (new / switch / rename /
   delete); the ephemeral `<Chat/>` component is retained for the draft room.
 
-**Phase 2 — memory (planned, not yet built).** A `chat_memory` store of short
-notes injected into the system prompt every turn (the same mechanism as the
-draft-context block), a `remember`/`forget` tool the model calls when the user
-says "remember that…", and a manual memory editor. Model-assisted + manual.
+**Phase 2 — memory (built).** A `MemoryStore` (also in `history`) over a
+`chat_memory` collection of short notes `{ id, text, createdAt, source }`.
+`memoryBlock()` formats them (ids included) into the system prompt every
+persisted turn (draft chat excluded). Model-assisted + manual: the chat gains a
+`remember_fact` tool (saves, source "model") and a `forget_fact` tool (removes by
+the id shown in the block); the user curates the list via `GET/POST/DELETE
+/api/memory` and a memory editor in the Settings panel. `add()` de-dupes on
+identical text. `runChatTurn` gained a `systemExtra` hook for the injection.
 
 ## Rationale
 
