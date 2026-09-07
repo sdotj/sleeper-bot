@@ -1292,6 +1292,8 @@
         "web/src/features/myTeam/MyTeam.tsx",
         "web/src/features/settings/Settings.tsx",
         "web/src/features/standings/Standings.tsx",
+        "web/src/features/team/Kpis.tsx",
+        "web/src/features/team/TeamView.tsx",
         "web/src/lib/api.ts",
         "web/src/lib/auth.ts",
         "web/src/lib/cn.ts",
@@ -1311,12 +1313,28 @@
           "end_line": 97
         },
         {
+          "name": "export const TEAM_SECTIONS = [\"My Team\", \"Standings\", \"Matchups\"] as const;",
+          "kind": "variable",
+          "signature": "export_statement:export const TEAM_SECTIONS = [\"My Team\", \"Standings\", \"Matchups\"] as const;",
+          "file": "web/src/features/team/TeamView.tsx",
+          "line": 6,
+          "end_line": 6
+        },
+        {
           "name": "export const api = {\n  leagues: () => get<League[]>(\"/api/leagues\"),\n  myRoster: (id: string) => get<Roster | null>(`/api/leagues/${id}/my-roster`),\n  standings: (id: string) => get<StandingRow[]>(`/api/leagues/${id}/standings`),\n  matchups: (id: string, week?: number) =>\n    get<Matchup[]>(`/api/leagues/${id}/matchups${week ? `?week=${week}` : \"\"}`),\n  auth: (id: string) => get<AuthStatus>(`/api/leagues/${id}/auth`),\n  audit: (id: string) => get<AuditEvent[]>(`/api/audit?leagueId=${encodeURIComponent(id)}`),\n  drafts: (id: string) => get<Draft[]>(`/api/leagues/${id}/drafts`),\n  draftBoard: (id: string, draftId: string, yourRosterId?: number) =>\n    get<DraftBoard>(\n      `/api/leagues/${id}/drafts/${draftId}/board${yourRosterId != null ? `?yourRosterId=${yourRosterId}` : \"\"}`,\n    ),\n  draftRecs: (\n    id: string,\n    draftId: string,\n    o: { rosterId?: number; position?: string; limit?: number } = {},\n  ) => {\n    const q = new URLSearchParams();\n    if (o.rosterId != null) q.set(\"rosterId\", String(o.rosterId));\n    if (o.position) q.set(\"position\", o.position);\n    if (o.limit != null) q.set(\"limit\", String(o.limit));\n    return get<DraftRecommendation[]>(`/api/leagues/${id}/drafts/${draftId}/recommendations?${q}`);\n  },\n\n  // --- settings ---\n  config: () => get<SleepBotConfigDoc>(\"/api/config\"),\n  saveConfig: (config: SleepBotConfigDoc) => send<SleepBotConfigDoc>(\"PUT\", \"/api/config\", config),\n  resetConfig: () => send<SleepBotConfigDoc>(\"POST\", \"/api/config/reset\"),\n  sleeperToken: () => get<SleeperTokenStatus>(\"/api/secrets/sleeper\"),\n  setSleeperToken: (token: string) =>\n    send<SleeperTokenStatus>(\"PUT\", \"/api/secrets/sleeper\", { token }),\n  clearSleeperToken: () => send<SleeperTokenStatus>(\"DELETE\", \"/api/secrets/sleeper\"),\n\n  // --- chat history ---\n  conversations: () => get<ConversationSummary[]>(\"/api/conversations\"),\n  conversation: (id: string) => get<Conversation>(`/api/conversations/${id}`),\n  sendChat: (message: string, conversationId?: string) =>\n    send<{ conversationId: string; reply: string; toolCalls: string[] }>(\"POST\", \"/api/chat\", {\n      message,\n      conversationId,\n    }),\n  renameConversation: (id: string, title: string) =>\n    send<Conversation>(\"PATCH\", `/api/conversations/${id}`, { title }),\n  deleteConversation: (id: string) => send<{ ok: true }>(\"DELETE\", `/api/conversations/${id}`),\n\n  // --- long-term memory ---\n  memory: () => get<MemoryNote[]>(\"/api/memory\"),\n  addMemory: (text: string) => send<MemoryNote>(\"POST\", \"/api/memory\", { text }),\n  deleteMemory: (id: string) => send<{ ok: true }>(\"DELETE\", `/api/memory/${id}`),\n\n  // --- autonomous manager ---\n  agentStatus: () => get<AgentStatus>(\"/api/agent/status\"),\n  agentSweep: () => send<AgentSweepResult>(\"POST\", \"/api/agent/sweep\"),\n};",
           "kind": "variable",
           "signature": "export_statement:export const api = { leagues: () => get<League[]>(\"/api/leagues\"), myRoster: (id: string) => get<Roster | null>(`/api/leagues/${id}/my-roster`), standings: (id: string) => get<StandingRow[]>(`/api/leagues/${id}/standings`), matchups: (id: string, week?: number) => get<Matchup[]>(`/api/leagues/${id}/matchups${week ? `?week=${week}` : \"\"}`), auth: (id: string) => get<AuthStatus>(`/api/leagues/${id}/auth`), audit: (id: string) => get<AuditEvent[]>(`/api/audit?leagueId=${encodeURIComponent(id)}`), drafts: (id: string) => get<Draft[]>(`/api/leagues/${id}/drafts`), draftBoard: (id: string, draftId: string, yourRosterId?: number) => get<DraftBoard>( `/api/leagues/${id}/drafts/${draftId}/board${yourRosterId != null ? `?yourRosterId=${yourRosterId}` : \"\"}`, ), draftRecs: ( id: string, draftId: string, o: { rosterId?: number; position?: string; limit?: number } = {}, ) => { const q = new URLSearchParams(); if (o.rosterId != null) q.set(\"rosterId\", String(o.rosterId)); if (o.position) q.set(\"position\", o.position); if (o.limit != null) q.set(\"limit\", String(o.limit)); return get<DraftRecommendation[]>(`/api/leagues/${id}/drafts/${draftId}/recommendations?${q}`); }, // --- settings --- config: () => get<SleepBotConfigDoc>(\"/api/config\"), saveConfig: (config: SleepBotConfigDoc) => send<SleepBotConfigDoc>(\"PUT\", \"/api/config\", config), resetConfig: () => send<SleepBotConfigDoc>(\"POST\", \"/api/config/reset\"), sleeperToken: () => get<SleeperTokenStatus>(\"/api/secrets/sleeper\"), setSleeperToken: (token: string) => send<SleeperTokenStatus>(\"PUT\", \"/api/secrets/sleeper\", { token }), clearSleeperToken: () => send<SleeperTokenStatus>(\"DELETE\", \"/api/secrets/sleeper\"), // --- chat history --- conversations: () => get<ConversationSummary[]>(\"/api/conversations\"), conversation: (id: string) => get<Conversation>(`/api/conversations/${id}`), sendChat: (message: string, conversationId?: string) => send<{ conversationId: string; reply: string; toolCalls: string[] }>(\"POST\", \"/api/chat\", { message, conversationId, }), renameConversation: (id: string, title: string) => send<Conversation>(\"PATCH\", `/api/conversations/${id}`, { title }), deleteConversation: (id: string) => send<{ ok: true }>(\"DELETE\", `/api/conversations/${id}`), // --- long-term memory --- memory: () => get<MemoryNote[]>(\"/api/memory\"), addMemory: (text: string) => send<MemoryNote>(\"POST\", \"/api/memory\", { text }), deleteMemory: (id: string) => send<{ ok: true }>(\"DELETE\", `/api/memory/${id}`), // --- autonomous manager --- agentStatus: () => get<AgentStatus>(\"/api/agent/status\"), agentSweep: () => send<AgentSweepResult>(\"POST\", \"/api/agent/sweep\"), };",
           "file": "web/src/lib/api.ts",
           "line": 52,
           "end_line": 106
+        },
+        {
+          "name": "export const sectionDomId = (s: TeamSection) => `sec-${s.toLowerCase().replace(/[^a-z0-9]+/g, \"-\")}`;",
+          "kind": "variable",
+          "signature": "export_statement:export const sectionDomId = (s: TeamSection) => `sec-${s.toLowerCase().replace(/[^a-z0-9]+/g, \"-\")}`;",
+          "file": "web/src/features/team/TeamView.tsx",
+          "line": 17,
+          "end_line": 17
         },
         {
           "name": "export default defineConfig({\n  plugins: [react(), tailwindcss()],\n  server: {\n    port: 5173,\n    proxy: { \"/api\": process.env.SLEEPBOT_API ?? \"http://127.0.0.1:8787\" },\n  },\n});",
@@ -1677,6 +1695,22 @@
           "file": "web/src/lib/types.ts",
           "line": 31,
           "end_line": 41
+        },
+        {
+          "name": "SectionRefs",
+          "kind": "type",
+          "signature": "export_statement:export type SectionRefs = Record<TeamSection, RefObject<HTMLElement>>;",
+          "file": "web/src/features/team/TeamView.tsx",
+          "line": 8,
+          "end_line": 8
+        },
+        {
+          "name": "TeamSection",
+          "kind": "type",
+          "signature": "export_statement:export type TeamSection = (typeof TEAM_SECTIONS)[number];",
+          "file": "web/src/features/team/TeamView.tsx",
+          "line": 7,
+          "end_line": 7
         },
         {
           "name": "Theme",

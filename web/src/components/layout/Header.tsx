@@ -58,7 +58,7 @@ export function Header({
   onLogout?: () => void;
 }) {
   return (
-    <header className="mb-6 flex items-center justify-between gap-3 border-b border-border pb-4">
+    <header className="flex items-center justify-between gap-3 pb-3 pt-4">
       <div className="flex items-center gap-2.5">
         <span className="text-2xl leading-none">🏈</span>
         <h1 className="text-lg font-bold tracking-tight">SleepBot</h1>
