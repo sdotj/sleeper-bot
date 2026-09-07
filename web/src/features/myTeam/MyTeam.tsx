@@ -1,17 +1,25 @@
 import { api, useAsync } from "../../lib/api";
+import { cn } from "../../lib/cn";
 import type { PlayerRef } from "../../lib/types";
-import { Async, Card, CardHeader, EmptyState, PlayerRow, SectionLabel } from "../../components/ui";
+import { Async, Card, CardHeader, EmptyState, PositionBadge } from "../../components/ui";
 
 function Group({ label, players }: { label: string; players: PlayerRef[] }) {
   if (!players.length) return null;
   return (
-    <div className="px-5 py-3">
-      <SectionLabel className="mb-1.5">{label}</SectionLabel>
-      <div className="divide-y divide-border/50">
-        {players.map((p) => (
-          <PlayerRow key={p.playerId} pos={p.position} name={p.name} right={p.team ?? "FA"} />
-        ))}
+    <div>
+      <div className="bg-surface-2/60 px-5 py-2 text-[0.62rem] font-semibold uppercase tracking-[0.09em] text-faint">
+        {label}
       </div>
+      {players.map((p, i) => (
+        <div
+          key={p.playerId}
+          className={cn("flex items-center gap-3 px-5 py-2.5", i % 2 === 1 && "bg-surface-2/35")}
+        >
+          <PositionBadge pos={p.position} />
+          <span className="min-w-0 flex-1 truncate font-medium">{p.name}</span>
+          <span className="shrink-0 text-xs font-semibold tabular-nums text-faint">{p.team ?? "FA"}</span>
+        </div>
+      ))}
     </div>
   );
 }
@@ -29,22 +37,20 @@ export function MyTeam({ leagueId }: { leagueId: string }) {
             </EmptyState>
           </Card>
         ) : (
-          <Card>
+          <Card className="overflow-hidden">
             <CardHeader
               title={roster.ownerName}
               right={
-                <span className="tabular-nums">
+                <span className="tabular-nums text-muted">
                   {roster.wins}-{roster.losses}
                   {roster.ties ? `-${roster.ties}` : ""} · {roster.pointsFor.toFixed(1)} PF
                 </span>
               }
             />
-            <div className="divide-y divide-border/60">
-              <Group label="Starters" players={roster.starters} />
-              <Group label="Bench" players={roster.bench} />
-              <Group label="IR" players={roster.reserve} />
-              <Group label="Taxi" players={roster.taxi} />
-            </div>
+            <Group label="Starters" players={roster.starters} />
+            <Group label="Bench" players={roster.bench} />
+            <Group label="IR" players={roster.reserve} />
+            <Group label="Taxi" players={roster.taxi} />
           </Card>
         )
       }

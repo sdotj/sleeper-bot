@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from "react";
+import type { RefObject } from "react";
 import { MyTeam } from "../myTeam/MyTeam";
 import { Standings } from "../standings/Standings";
 import { Matchups } from "../matchups/Matchups";
@@ -17,45 +17,22 @@ const HEADINGS: Record<TeamSection, string> = {
 export const sectionDomId = (s: TeamSection) => `sec-${s.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
 
 /**
- * The combined "team" view (dec: UI refresh): My Team, Standings, and Matchups
- * stacked on one scroll page. The nav tabs jump to a section; an
- * IntersectionObserver scroll-spy reports which section is in view so the active
- * tab tracks the scroll. `scroll-mt` keeps a jumped-to section clear of the
- * sticky header.
+ * The combined "team" view (UI refresh): My Team, Standings, and Matchups
+ * stacked on one scroll page. The nav (in App) jumps to a section by id and
+ * runs the scroll-spy; here we just render the sections with stable ids/refs.
+ * `scroll-mt` keeps a deep-linked section clear of the sticky header.
  */
-export function TeamView({
-  leagueId,
-  refs,
-  onActiveSection,
-}: {
-  leagueId: string;
-  refs: SectionRefs;
-  onActiveSection: (s: TeamSection) => void;
-}) {
-  useEffect(() => {
-    const header = document.querySelector("[data-sticky-header]");
-    const top = (header instanceof HTMLElement ? header.offsetHeight : 160) + 8;
-    const obs = new IntersectionObserver(
-      (entries) => {
-        const inView = entries.filter((e) => e.isIntersecting);
-        if (!inView.length) return;
-        // The topmost section (in TEAM_SECTIONS order) currently crossing the band.
-        const active = TEAM_SECTIONS.find((s) => inView.some((e) => e.target === refs[s].current));
-        if (active) onActiveSection(active);
-      },
-      { rootMargin: `-${top}px 0px -55% 0px`, threshold: 0 },
-    );
-    for (const s of TEAM_SECTIONS) {
-      const el = refs[s].current;
-      if (el) obs.observe(el);
-    }
-    return () => obs.disconnect();
-  }, [leagueId, refs, onActiveSection]);
-
+export function TeamView({ leagueId, refs }: { leagueId: string; refs: SectionRefs }) {
   return (
     <div className="space-y-9">
       {TEAM_SECTIONS.map((s) => (
-        <section key={s} id={sectionDomId(s)} ref={refs[s]} className="scroll-mt-[210px] space-y-3">
+        <section
+          key={s}
+          id={sectionDomId(s)}
+          ref={refs[s]}
+          style={{ scrollMarginTop: "var(--sticky-h, 210px)" }}
+          className="space-y-2.5"
+        >
           <h2 className="px-1 text-sm font-semibold text-muted">{HEADINGS[s]}</h2>
           {s === "My Team" && <MyTeam leagueId={leagueId} />}
           {s === "Standings" && <Standings leagueId={leagueId} />}

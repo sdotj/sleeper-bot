@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, useAsync } from "./lib/api";
 import { logout, useAuth } from "./lib/auth";
 import { cn } from "./lib/cn";
@@ -16,6 +16,12 @@ const PAGE_TABS = ["Draft", "Audit", "Chat", "Settings"] as const;
 type Page = (typeof PAGE_TABS)[number];
 const ALL_TABS = [...TEAM_SECTIONS, ...PAGE_TABS] as const;
 type Tab = (typeof ALL_TABS)[number];
+
+/** Height of the sticky header right now — the scroll-spy line. */
+function headerHeight(): number {
+  const el = document.querySelector("[data-sticky-header]");
+  return el instanceof HTMLElement ? el.offsetHeight : 0;
+}
 
 export function App() {
   const { token, authRequired } = useAuth();
@@ -35,9 +41,7 @@ function Nav({ active, onSelect }: { active: Tab; onSelect: (t: Tab) => void }) 
             onClick={() => onSelect(name)}
             className={cn(
               "whitespace-nowrap rounded-lg px-3.5 py-2 text-sm transition-colors",
-              isActive
-                ? "bg-accent font-semibold text-on-accent"
-                : "font-medium text-muted hover:text-text",
+              isActive ? "bg-accent font-semibold text-on-accent" : "font-medium text-muted hover:text-text",
             )}
           >
             {name}
@@ -62,23 +66,55 @@ function Dashboard({ loggedIn }: { loggedIn: boolean }) {
     Standings: useRef<HTMLElement>(null),
     Matchups: useRef<HTMLElement>(null),
   };
-  const onActiveSection = useCallback((s: TeamSection) => setSection(s), []);
+
+  // Keep --sticky-h in sync with the header's height, so each section's
+  // scroll-margin-top lands it just below the header on a jump.
+  useEffect(() => {
+    const el = document.querySelector("[data-sticky-header]");
+    if (!(el instanceof HTMLElement)) return;
+    const set = () => document.documentElement.style.setProperty("--sticky-h", `${el.offsetHeight + 12}px`);
+    set();
+    const ro = new ResizeObserver(set);
+    ro.observe(el);
+    window.addEventListener("resize", set);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", set);
+    };
+  });
+
+  // Scroll-spy: the active section is the last one whose top has crossed the
+  // header line. A plain scroll listener is steadier than an observer here.
+  useEffect(() => {
+    if (page !== null) return;
+    const onScroll = () => {
+      const line = headerHeight() + 24;
+      let current: TeamSection = TEAM_SECTIONS[0];
+      for (const s of TEAM_SECTIONS) {
+        const el = refs[s].current;
+        if (el && el.getBoundingClientRect().top <= line) current = s;
+      }
+      setSection((prev) => (prev === current ? prev : current));
+    };
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page]);
 
   const onTab = (name: Tab) => {
     if ((TEAM_SECTIONS as readonly string[]).includes(name)) {
       const s = name as TeamSection;
       setPage(null);
       setSection(s);
-      // Defer so the TeamView is mounted (e.g. when returning from a standalone
-      // page), then scroll the section clear of the sticky header — measuring its
-      // height so the offset is right at any width / with or without the KPI row.
-      requestAnimationFrame(() => {
+      // Instant jump to a live-computed target (native smooth scroll and
+      // scrollIntoView are unreliable in some preview browsers). setTimeout(0)
+      // lets TeamView mount when coming from a standalone page; the resulting
+      // scroll event lets the spy confirm the active section.
+      setTimeout(() => {
         const el = document.getElementById(sectionDomId(s));
-        if (!el) return;
-        const header = document.querySelector("[data-sticky-header]");
-        const offset = (header instanceof HTMLElement ? header.offsetHeight : 0) + 12;
-        window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - offset, behavior: "smooth" });
-      });
+        if (el) window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - headerHeight() - 12);
+      }, 0);
     } else {
       setPage(name as Page);
     }
@@ -108,7 +144,7 @@ function Dashboard({ loggedIn }: { loggedIn: boolean }) {
         )}
         {active &&
           (onTeam ? (
-            <TeamView leagueId={active} refs={refs} onActiveSection={onActiveSection} />
+            <TeamView leagueId={active} refs={refs} />
           ) : page === "Draft" ? (
             <DraftView leagueId={active} />
           ) : page === "Audit" ? (

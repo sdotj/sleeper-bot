@@ -1345,6 +1345,14 @@
           "end_line": 13
         },
         {
+          "name": "App",
+          "kind": "function",
+          "signature": "export_statement:export function App() { const { token, authRequired } = useAuth(); if (authRequired) return <Login />; return <Dashboard key={token ?? \"anon\"} loggedIn={Boolean(token)} />; } function Nav({ active, onSelect }: { active: Tab; onSelect: (t: Tab) => void }) { return ( <nav className=\"flex items-center gap-1 overflow-x-auto pb-3 pt-1\"> {ALL_TABS.map((name) => { const isActive = name === active; return ( <button key={name} type=\"button\" onClick={() => onSelect(name)} className={cn( \"whitespace-nowrap rounded-lg px-3.5 py-2 text-sm transition-colors\", isActive ? \"bg-accent font-semibold text-on-accent\" : \"font-medium text-muted hover:text-text\", )} > {name} </button> ); })} </nav> ); } function Dashboard({ loggedIn }: { loggedIn: boolean }) { const leagues = useAsync(() => api.leagues(), []); const [leagueId, setLeagueId] = useState<string | null>(null); const active = leagueId ?? leagues.data?.[0]?.id ?? null; // null page = the combined team view; `section` tracks scroll-spy within it. const [page, setPage] = useState<Page | null>(null); const [section, setSection] = useState<TeamSection>(\"My Team\"); const refs: SectionRefs = { \"My Team\": useRef<HTMLElement>(null), Standings: useRef<HTMLElement>(null), Matchups: useRef<HTMLElement>(null), }; // Keep --sticky-h in sync with the header's height, so each section's // scroll-margin-top lands it just below the header on a jump. useEffect(() => { const el = document.querySelector(\"[data-sticky-header]\"); if (!(el instanceof HTMLElement)) return; const set = () => document.documentElement.style.setProperty(\"--sticky-h\", `${el.offsetHeight + 12}px`); set(); const ro = new ResizeObserver(set); ro.observe(el); window.addEventListener(\"resize\", set); return () => { ro.disconnect(); window.removeEventListener(\"resize\", set); }; }",
+          "file": "web/src/App.tsx",
+          "line": 26,
+          "end_line": 84
+        },
+        {
           "name": "Async",
           "kind": "function",
           "signature": "export_statement:export function Async<T>({ state, children, }: { state: AsyncState<T>; children: (data: T) => ReactNode; }) { // Data-first: keep showing content while a refresh is in flight, and don't // blank the view on a transient poll error once we have data. if (state.data !== undefined) return <>{children(state.data)}</>; if (state.loading) { return ( <div className=\"flex items-center justify-center gap-2 py-12 text-sm text-muted\"> <Spinner /> Loading… </div> ); } if (state.error) { return <p className=\"px-5 py-8 text-sm text-danger\">⚠ {state.error}</p>; }",
