@@ -8,6 +8,7 @@ generated: true
 - sleepbot
 - sleepbot.actions
 - sleepbot.adapters
+- sleepbot.adapters.espn
 - sleepbot.adapters.interface
 - sleepbot.adapters.sleeper
 - sleepbot.agent
@@ -20,6 +21,7 @@ generated: true
 - sleepbot.core
 - sleepbot.crypto
 - sleepbot.draft
+- sleepbot.espn-api
 - sleepbot.gate
 - sleepbot.gui
 - sleepbot.history
@@ -43,6 +45,7 @@ None in Phase 1.
 
 ## Findings
 - warning: CAIRN_CONTRACT_LEAF_UNCOVERED leaf node `sleepbot.actions` declares no contract
+- warning: CAIRN_CONTRACT_LEAF_UNCOVERED leaf node `sleepbot.adapters.espn` declares no contract
 - warning: CAIRN_CONTRACT_LEAF_UNCOVERED leaf node `sleepbot.adapters.interface` declares no contract
 - warning: CAIRN_CONTRACT_LEAF_UNCOVERED leaf node `sleepbot.adapters.sleeper` declares no contract
 - warning: CAIRN_CONTRACT_LEAF_UNCOVERED leaf node `sleepbot.agent` declares no contract

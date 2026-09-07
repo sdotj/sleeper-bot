@@ -1,6 +1,8 @@
 import type { WriteableLeagueAdapter } from "../adapters/LeagueAdapter.js";
 import { SleeperAdapter } from "../adapters/sleeper/SleeperAdapter.js";
 import { SleeperClient } from "../adapters/sleeper/sleeperClient.js";
+import { EspnAdapter } from "../adapters/espn/EspnAdapter.js";
+import { EspnClient } from "../adapters/espn/espnClient.js";
 import { SleeperSessionProvider, inspectToken, type SessionStatus } from "../auth/index.js";
 import { AuditLog, createStore, type Store } from "../audit/index.js";
 import { decryptSecret, encryptSecret, secretsEnabled } from "../crypto/index.js";
@@ -22,7 +24,7 @@ import { ActionPipeline, PendingStore } from "../actions/index.js";
 import { DraftAssistant } from "../draft/index.js";
 import { ChatHistory, MemoryStore } from "../history/index.js";
 import { ConfigRegistry } from "../config/loader.js";
-import type { LeagueEntry } from "../config/schema.js";
+import { resolveEnvRef, type LeagueEntry } from "../config/schema.js";
 
 /**
  * AppContext — the wired-up SleepBot core. Every front-end (the MCP server, the
@@ -274,6 +276,12 @@ async function buildDynastyValue(sleeperClient: SleeperClient): Promise<ValuePro
   return GenericValueProvider.fromFile(process.env.SLEEPBOT_RANKINGS ?? "config/rankings.json");
 }
 
+/** The current NFL season year (Sep–Feb belongs to the year the season began). */
+function defaultSeason(now = new Date()): string {
+  const y = now.getFullYear();
+  return String(now.getMonth() >= 2 ? y : y - 1); // Jan/Feb -> previous season year
+}
+
 /** Map a validated league entry to its write-capable adapter. New platforms slot in here. */
 function buildAdapter(
   entry: LeagueEntry,
@@ -288,11 +296,16 @@ function buildAdapter(
       // touch it. The token itself is resolved in buildAppContext (store or env).
       return new SleeperAdapter(entry.sleeper!.leagueId, sleeperClient, entry.sleeper!.username, session);
     }
-    case "espn":
-      throw new Error(
-        `league "${entry.id}" uses platform "espn", which arrives in Phase 4. ` +
-          `Phase 1/2 support Sleeper only.`,
-      );
+    case "espn": {
+      // schema.superRefine guarantees `espn` is present for platform "espn".
+      const e = entry.espn!;
+      const swid = e.swid ? resolveEnvRef(e.swid) : undefined;
+      const espnS2 = e.espnS2 ? resolveEnvRef(e.espnS2) : undefined;
+      const season = e.season ?? defaultSeason();
+      const espnClient = new EspnClient(e.leagueId, season, { swid, espnS2 });
+      // Read-only for now; writes throw EspnUnsupportedError.
+      return new EspnAdapter(e.leagueId, season, espnClient, swid);
+    }
     default: {
       const exhaustive: never = entry.platform;
       throw new Error(`unsupported platform: ${String(exhaustive)}`);

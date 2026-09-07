@@ -1,5 +1,6 @@
 {
   "sleepbot.actions:src/actions": "3b131c35de5520c8",
+  "sleepbot.adapters.espn:src/adapters/espn": "fb782b808b026f0d",
   "sleepbot.adapters.interface:src/adapters/LeagueAdapter.ts": "3f1b7c58258528ba",
   "sleepbot.adapters.sleeper:src/adapters/sleeper": "b0108a7704c36075",
   "sleepbot.agent:src/agent": "3d70c960091519a8",

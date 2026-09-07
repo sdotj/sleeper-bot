@@ -25,8 +25,11 @@ const sleeperConfig = z.object({
 
 const espnConfig = z.object({
   leagueId: z.string().min(1, "espn.leagueId is required"),
-  swid: envRef,
-  espnS2: envRef,
+  /** Cookies for a private league (omit for a public one). Support `env:VAR`. */
+  swid: envRef.optional(),
+  espnS2: envRef.optional(),
+  /** NFL season year, e.g. "2025". Defaults to the current season. */
+  season: z.string().optional(),
 });
 
 /**

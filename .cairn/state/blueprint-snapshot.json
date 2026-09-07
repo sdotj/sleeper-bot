@@ -25,6 +25,17 @@
       "paths": [],
       "edges": []
     },
+    "sleepbot.adapters.espn": {
+      "kind": "Module",
+      "parent": "sleepbot.adapters",
+      "paths": [
+        "./src/adapters/espn"
+      ],
+      "edges": [
+        "sleepbot.adapters.interface",
+        "sleepbot.espn-api"
+      ]
+    },
     "sleepbot.adapters.interface": {
       "kind": "Module",
       "parent": "sleepbot.adapters",
@@ -150,6 +161,12 @@
         "sleepbot.adapters.interface",
         "sleepbot.value"
       ]
+    },
+    "sleepbot.espn-api": {
+      "kind": "Actor",
+      "parent": "sleepbot",
+      "paths": [],
+      "edges": []
     },
     "sleepbot.gate": {
       "kind": "Module",

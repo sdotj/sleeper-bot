@@ -12,6 +12,16 @@
         "enabled": true,
         "autonomy": "manual"
       }
+    },
+    {
+      "id": "my-espn-league",
+      "platform": "espn",
+      "valueMode": "redraft",
+      "espn": {
+        "leagueId": "1234567",
+        "swid": "env:ESPN_SWID",
+        "espnS2": "env:ESPN_S2"
+      }
     }
   ]
 }

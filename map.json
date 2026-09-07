@@ -106,6 +106,192 @@
       "symbols": []
     },
     {
+      "id": "sleepbot.adapters.espn",
+      "kind": "module",
+      "name": "Espn",
+      "state": "synced",
+      "paths": [
+        "./src/adapters/espn"
+      ],
+      "files": [
+        "src/adapters/espn/EspnAdapter.ts",
+        "src/adapters/espn/espn.test.ts",
+        "src/adapters/espn/espnClient.ts",
+        "src/adapters/espn/espnMaps.ts"
+      ],
+      "contracts": [],
+      "symbols": [
+        {
+          "name": "EspnAdapter",
+          "kind": "class",
+          "signature": "export_statement:export class EspnAdapter implements WriteableLeagueAdapter { readonly platform: Platform = \"espn\"; constructor( private readonly leagueId: string, private readonly season: string, private readonly client: EspnApi = new EspnClient(leagueId, season), /** The user's SWID (with braces) — flags their team `isYou`. Optional. */ private readonly swid?: string, ) {} async getLeagueInfo(): Promise<LeagueInfo> { const l = await this.client.getLeague([\"mSettings\"]); const s = l.settings ?? {}; const items = s.scoringSettings?.scoringItems ?? []; const rec = items.find((i) => i.statId === 53)?.points ?? 0; const scoringSettings: Record<string, number> = {}; for (const it of items) if (it.points != null) scoringSettings[`stat_${it.statId}`] = it.points; const counts = s.rosterSettings?.lineupSlotCounts ?? {}; const rosterPositions: string[] = []; for (const [slotId, count] of Object.entries(counts)) { const label = LINEUP_SLOT_LABEL[Number(slotId)] ?? `SLOT_${slotId}`; for (let i = 0; i < count; i++) rosterPositions.push(label); } return { leagueId: this.leagueId, name: s.name ?? \"\", season: this.season, platform: this.platform, status: l.status?.currentMatchupPeriod ? \"in_progress\" : \"unknown\", totalRosters: s.size ?? l.teams?.length ?? 0, scoringType: rec >= 1 ? \"ppr\" : rec > 0 ? \"half_ppr\" : \"standard\", rosterPositions, scoringSettings, }; } async getRosters(): Promise<Roster[]> { const l = await this.client.getLeague([\"mTeam\", \"mRoster\"]); const members = this.memberMap(l.members ?? []); return (l.teams ?? []).map((t) => this.normalizeRoster(t, members)); } async getMyRoster(): Promise<Roster | null> { if (!this.swid) return null; return (await this.getRosters()).find((r) => r.isYou) ?? null; } async getStandings(): Promise<StandingRow[]> { const rosters = await this.getRosters(); return [...rosters] .sort((a, b) => b.wins - a.wins || b.pointsFor - a.pointsFor) .map((r, i) => ({ rank: i + 1, rosterId: r.rosterId, ownerName: r.ownerName, isYou: r.isYou, wins: r.wins, losses: r.losses, ties: r.ties, pointsFor: r.pointsFor, pointsAgainst: r.pointsAgainst, })); } async getMatchups(week?: number): Promise<Matchup[]> { const l = await this.client.getLeague([\"mTeam\", \"mMatchupScore\"], week); const wk = week ?? l.status?.currentMatchupPeriod ?? 1; const members = this.memberMap(l.members ?? []); const teamsById = new Map((l.teams ?? []).map((t) => [t.id, t])); const out: Matchup[] = []; for (const g of l.schedule ?? []) { if (g.matchupPeriodId !== wk) continue; for (const side of [g.home, g.away]) { if (!side?.teamId) continue; const team = teamsById.get(side.teamId); const entries = side.rosterForCurrentScoringPeriod?.entries ?? side.rosterForMatchupPeriod?.entries ?? []; out.push({ week: wk, matchupId: g.id ?? 0, rosterId: side.teamId, ownerName: team ? this.teamName(team, members) : `Team ${side.teamId}`, isYou: team ? this.isYou(team) : false, points: side.totalPoints ?? 0, starters: this.refs(entries.filter((e) => !this.isBenchOrIr(e))), }); } } return out; } async getTransactions(week?: number): Promise<Transaction[]> { const l = await this.client.getLeague([\"mTransactions2\"], week); const txns = l.transactions ?? []; return txns .filter((t) => week == null || t.scoringPeriodId === week) .map((t) => { const adds: Record<string, number> = {}; const drops: Record<string, number> = {}; const rosterIds = new Set<number>(); for (const it of t.items ?? []) { if (it.playerId == null) continue; const pid = String(it.playerId); if (it.type === \"ADD\" && it.toTeamId != null) (adds[pid] = it.toTeamId), rosterIds.add(it.toTeamId); if (it.type === \"DROP\" && it.fromTeamId != null) (drops[pid] = it.fromTeamId), rosterIds.add(it.fromTeamId); if (it.fromTeamId != null) rosterIds.add(it.fromTeamId); if (it.toTeamId != null) rosterIds.add(it.toTeamId); } return { transactionId: t.id ?? \"\", type: (t.type ?? \"unknown\").toLowerCase(), status: (t.status ?? \"unknown\").toLowerCase(), week: t.scoringPeriodId ?? week ?? 0, adds, drops, rosterIds: [...rosterIds], faabBid: t.bidAmount, createdMs: t.proposedDate ?? 0, }; }); } async searchPlayers(query: string, filters: PlayerSearchFilters = {}): Promise<Player[]> { const pool = await this.client.getPlayers(); const needle = query.trim().toLowerCase(); const position = filters.position?.toUpperCase(); const team = filters.team?.toUpperCase(); const limit = filters.limit ?? 25; const out: Player[] = []; for (const p of pool) { const np = this.normalizePlayer(p); if (needle && !np.fullName.toLowerCase().includes(needle)) continue; if (position && np.position !== position) continue; if (team && (np.team ?? \"\").toUpperCase() !== team) continue; out.push(np); if (out.length >= limit) break; } return out; } async getTrendingPlayers(type: \"add\" | \"drop\", limit = 25): Promise<TrendingPlayer[]> { // ESPN has no Sleeper-style trending feed; approximate from each player's // change in roster % over the platform (percentChange), which is the same idea. const pool = await this.client.getPlayers(); const scored = pool .map((p) => ({ p, change: p.ownership?.percentChange ?? 0 })) .filter((x) => (type === \"add\" ? x.change > 0 : x.change < 0)) .sort((a, b) => (type === \"add\" ? b.change - a.change : a.change - b.change)) .slice(0, limit); return scored.map(({ p, change }) => ({ player: this.normalizePlayer(p), count: Math.round(Math.abs(change)) })); } async resolvePlayers(playerIds: string[]): Promise<PlayerRef[]> { const pool = await this.client.getPlayers(); const byId = new Map(pool.map((p) => [String(p.id), p])); return playerIds.map((id) => { const p = byId.get(id); return { playerId: id, name: p?.fullName ?? id, position: positionLabel(p?.defaultPositionId), team: proTeam(p?.proTeamId), }; }); } // --- drafts + writes: not supported on ESPN yet --------------------------- async listDrafts(): Promise<Draft[]> { throw new EspnUnsupportedError(\"Drafts\"); } async getDraft(): Promise<Draft> { throw new EspnUnsupportedError(\"Drafts\"); } async getDraftPicks(): Promise<DraftPick[]> { throw new EspnUnsupportedError(\"Drafts\"); } async getDraftablePlayers(): Promise<Player[]> { throw new EspnUnsupportedError(\"Drafts\"); } async executeTrade(_payload: TradePayload): Promise<WriteResult> { throw new EspnUnsupportedError(\"Writes\"); } async executeWaiverClaim(_payload: WaiverClaimPayload): Promise<WriteResult> { throw new EspnUnsupportedError(\"Writes\"); } async executeAddDrop(_payload: AddDropPayload): Promise<WriteResult> { throw new EspnUnsupportedError(\"Writes\"); } writeAuthStatus(): WriteAuthStatus { return { state: \"needs-reauth\" }; } // --- internal helpers ----------------------------------------------------- private normalizeRoster(t: EspnTeam, members: Map<string, EspnMember>): Roster { const entries = t.roster?.entries ?? []; const overall = t.record?.overall ?? {}; const starters = entries.filter((e) => !this.isBenchOrIr(e)); const bench = entries.filter((e) => e.lineupSlotId === BENCH_SLOT); const reserve = entries.filter((e) => e.lineupSlotId === IR_SLOT); return { rosterId: t.id, ownerId: t.owners?.[0] ?? \"\", ownerName: this.teamName(t, members), isYou: this.isYou(t), starters: this.refs(starters), bench: this.refs(bench), reserve: this.refs(reserve), taxi: [], wins: overall.wins ?? 0, losses: overall.losses ?? 0, ties: overall.ties ?? 0, pointsFor: overall.pointsFor ?? t.points ?? 0, pointsAgainst: overall.pointsAgainst ?? 0, }; } private isBenchOrIr(e: EspnRosterEntry): boolean { return e.lineupSlotId === BENCH_SLOT || e.lineupSlotId === IR_SLOT; } private refs(entries: EspnRosterEntry[]): PlayerRef[] { return entries.map((e) => { const p = e.playerPoolEntry?.player; const id = String(p?.id ?? e.playerId ?? \"\"); return { playerId: id, name: p?.fullName ?? id, position: positionLabel(p?.defaultPositionId), team: proTeam(p?.proTeamId), }; }); } private normalizePlayer(p: EspnPlayer): Player { return { playerId: String(p.id), fullName: p.fullName ?? String(p.id), position: positionLabel(p.defaultPositionId), team: proTeam(p.proTeamId), status: injuryLabel(p.injuryStatus), }; } private isYou(t: EspnTeam): boolean { if (!this.swid) return false; const me = this.swid.toUpperCase(); return (t.owners ?? []).some((o) => o.toUpperCase() === me); } /** A recognizable name for a team: its team name, else the owner's display name. */ private teamName(t: EspnTeam, members: Map<string, EspnMember>): string { const name = t.name?.trim() || [t.location, t.nickname].filter(Boolean).join(\" \").trim(); if (name) return name; const owner = t.owners?.[0] ? members.get(t.owners[0].toUpperCase()) : undefined; return owner?.displayName || t.abbrev || `Team ${t.id}`; } private memberMap(members: EspnMember[]): Map<string, EspnMember> { return new Map(members.map((m) => [m.id.toUpperCase(), m])); } }",
+          "file": "src/adapters/espn/EspnAdapter.ts",
+          "line": 46,
+          "end_line": 310
+        },
+        {
+          "name": "EspnClient",
+          "kind": "class",
+          "signature": "export_statement:export class EspnClient implements EspnApi { private playersCache: EspnPlayer[] | null = null; constructor( private readonly leagueId: string, private readonly season: string, private readonly opts: EspnClientOptions = {}, ) {} private base(): string { return `${HOST}/apis/v3/games/ffl/seasons/${this.season}/segments/0/leagues/${this.leagueId}`; } private headers(extra: Record<string, string> = {}): Record<string, string> { const { swid, espnS2 } = this.opts; if (swid && espnS2) extra.Cookie = `SWID=${swid}; espn_s2=${espnS2}`; return extra; } private async get<T>(url: string, headers: Record<string, string> = {}): Promise<T> { const res = await fetch(url, { headers: this.headers(headers) }); if (res.status === 401) { throw new Error( \"ESPN API returned 401 — the league is private and the SWID / espn_s2 cookies are missing or expired. \" + \"Re-capture them from a logged-in ESPN session.\", ); } if (!res.ok) throw new Error(`ESPN API failed: ${res.status} ${res.statusText}`); return (await res.json()) as T; } async getLeague(views: string[], scoringPeriodId?: number): Promise<EspnLeague> { const params = new URLSearchParams(); for (const v of views) params.append(\"view\", v); if (scoringPeriodId != null) params.set(\"scoringPeriodId\", String(scoringPeriodId)); return this.get<EspnLeague>(`${this.base()}?${params}`); } async getPlayers(): Promise<EspnPlayer[]> { if (this.playersCache) return this.playersCache; // ESPN filters the pool via the x-fantasy-filter header; pull a generous, // ownership-sorted slice (covers every fantasy-relevant player) once. const filter = JSON.stringify({ players: { limit: 1500, sortPercOwned: { sortPriority: 1, sortAsc: false } } }); const league = await this.get<EspnLeague>(`${this.base()}?view=kona_player_info`, { \"x-fantasy-filter\": filter, }); this.playersCache = (league.players ?? []).map((p) => p.player).filter((p): p is EspnPlayer => !!p); return this.playersCache; } }",
+          "file": "src/adapters/espn/espnClient.ts",
+          "line": 107,
+          "end_line": 156
+        },
+        {
+          "name": "EspnUnsupportedError",
+          "kind": "class",
+          "signature": "export_statement:export class EspnUnsupportedError extends Error { constructor(what: string) { super(`${what} is not supported on ESPN yet (Sleeper only).`); this.name = \"EspnUnsupportedError\"; } }",
+          "file": "src/adapters/espn/EspnAdapter.ts",
+          "line": 32,
+          "end_line": 37
+        },
+        {
+          "name": "export const BENCH_SLOT = 20;",
+          "kind": "variable",
+          "signature": "export_statement:export const BENCH_SLOT = 20;",
+          "file": "src/adapters/espn/espnMaps.ts",
+          "line": 64,
+          "end_line": 64
+        },
+        {
+          "name": "export const IR_SLOT = 21;",
+          "kind": "variable",
+          "signature": "export_statement:export const IR_SLOT = 21;",
+          "file": "src/adapters/espn/espnMaps.ts",
+          "line": 65,
+          "end_line": 65
+        },
+        {
+          "name": "export const LINEUP_SLOT_LABEL: Record<number, string> = {\n  0: \"QB\",\n  2: \"RB\",\n  3: \"RB/WR\",\n  4: \"WR\",\n  5: \"WR/TE\",\n  6: \"TE\",\n  7: \"OP\", // superflex / offensive player\n  16: \"DEF\",\n  17: \"K\",\n  18: \"P\",\n  20: \"BN\",\n  21: \"IR\",\n  23: \"FLEX\",\n};",
+          "kind": "variable",
+          "signature": "export_statement:export const LINEUP_SLOT_LABEL: Record<number, string> = { 0: \"QB\", 2: \"RB\", 3: \"RB/WR\", 4: \"WR\", 5: \"WR/TE\", 6: \"TE\", 7: \"OP\", // superflex / offensive player 16: \"DEF\", 17: \"K\", 18: \"P\", 20: \"BN\", 21: \"IR\", 23: \"FLEX\", };",
+          "file": "src/adapters/espn/espnMaps.ts",
+          "line": 68,
+          "end_line": 82
+        },
+        {
+          "name": "export const POSITION_BY_ID: Record<number, string> = {\n  1: \"QB\",\n  2: \"RB\",\n  3: \"WR\",\n  4: \"TE\",\n  5: \"K\",\n  16: \"DEF\",\n};",
+          "kind": "variable",
+          "signature": "export_statement:export const POSITION_BY_ID: Record<number, string> = { 1: \"QB\", 2: \"RB\", 3: \"WR\", 4: \"TE\", 5: \"K\", 16: \"DEF\", };",
+          "file": "src/adapters/espn/espnMaps.ts",
+          "line": 8,
+          "end_line": 15
+        },
+        {
+          "name": "export const PRO_TEAM_BY_ID: Record<number, string> = {\n  0: \"FA\",\n  1: \"ATL\",\n  2: \"BUF\",\n  3: \"CHI\",\n  4: \"CIN\",\n  5: \"CLE\",\n  6: \"DAL\",\n  7: \"DEN\",\n  8: \"DET\",\n  9: \"GB\",\n  10: \"TEN\",\n  11: \"IND\",\n  12: \"KC\",\n  13: \"LV\",\n  14: \"LAR\",\n  15: \"MIA\",\n  16: \"MIN\",\n  17: \"NE\",\n  18: \"NO\",\n  19: \"NYG\",\n  20: \"NYJ\",\n  21: \"PHI\",\n  22: \"ARI\",\n  23: \"PIT\",\n  24: \"LAC\",\n  25: \"SF\",\n  26: \"SEA\",\n  27: \"TB\",\n  28: \"WSH\",\n  29: \"CAR\",\n  30: \"JAX\",\n  33: \"BAL\",\n  34: \"HOU\",\n};",
+          "kind": "variable",
+          "signature": "export_statement:export const PRO_TEAM_BY_ID: Record<number, string> = { 0: \"FA\", 1: \"ATL\", 2: \"BUF\", 3: \"CHI\", 4: \"CIN\", 5: \"CLE\", 6: \"DAL\", 7: \"DEN\", 8: \"DET\", 9: \"GB\", 10: \"TEN\", 11: \"IND\", 12: \"KC\", 13: \"LV\", 14: \"LAR\", 15: \"MIA\", 16: \"MIN\", 17: \"NE\", 18: \"NO\", 19: \"NYG\", 20: \"NYJ\", 21: \"PHI\", 22: \"ARI\", 23: \"PIT\", 24: \"LAC\", 25: \"SF\", 26: \"SEA\", 27: \"TB\", 28: \"WSH\", 29: \"CAR\", 30: \"JAX\", 33: \"BAL\", 34: \"HOU\", };",
+          "file": "src/adapters/espn/espnMaps.ts",
+          "line": 22,
+          "end_line": 56
+        },
+        {
+          "name": "injuryLabel",
+          "kind": "function",
+          "signature": "export_statement:export function injuryLabel(status?: string | null): string | null { if (!status || status === \"ACTIVE\" || status === \"NORMAL\") return null; return status; // e.g. QUESTIONABLE, OUT, INJURY_RESERVE, DOUBTFUL }",
+          "file": "src/adapters/espn/espnMaps.ts",
+          "line": 85,
+          "end_line": 88
+        },
+        {
+          "name": "positionLabel",
+          "kind": "function",
+          "signature": "export_statement:export function positionLabel(defaultPositionId?: number): string { return (defaultPositionId != null && POSITION_BY_ID[defaultPositionId]) || \"\"; }",
+          "file": "src/adapters/espn/espnMaps.ts",
+          "line": 17,
+          "end_line": 19
+        },
+        {
+          "name": "proTeam",
+          "kind": "function",
+          "signature": "export_statement:export function proTeam(proTeamId?: number): string | null { if (proTeamId == null || proTeamId === 0) return null; return PRO_TEAM_BY_ID[proTeamId] ?? null; }",
+          "file": "src/adapters/espn/espnMaps.ts",
+          "line": 58,
+          "end_line": 61
+        },
+        {
+          "name": "EspnApi",
+          "kind": "interface",
+          "signature": "export_statement:export interface EspnApi { /** Fetch the league with the given `view`s (optionally for a specific week). */ getLeague(views: string[], scoringPeriodId?: number): Promise<EspnLeague>; /** The player pool (for search / trending / id resolution), ownership-sorted. */ getPlayers(): Promise<EspnPlayer[]>; }",
+          "file": "src/adapters/espn/espnClient.ts",
+          "line": 93,
+          "end_line": 98
+        },
+        {
+          "name": "EspnClientOptions",
+          "kind": "interface",
+          "signature": "export_statement:export interface EspnClientOptions { /** SWID cookie value (with braces), for private leagues. */ swid?: string; /** espn_s2 cookie value, for private leagues. */ espnS2?: string; }",
+          "file": "src/adapters/espn/espnClient.ts",
+          "line": 100,
+          "end_line": 105
+        },
+        {
+          "name": "EspnLeague",
+          "kind": "interface",
+          "signature": "export_statement:export interface EspnLeague { id?: number; seasonId?: number; scoringPeriodId?: number; status?: { currentMatchupPeriod?: number; latestScoringPeriod?: number; firstScoringPeriod?: number }; settings?: { name?: string; size?: number; rosterSettings?: { lineupSlotCounts?: Record<string, number> }; scoringSettings?: { scoringItems?: { statId: number; points?: number; pointsOverrides?: Record<string, number> }[] }; scheduleSettings?: { matchupPeriodCount?: number }; }; teams?: EspnTeam[]; schedule?: EspnScheduleGame[]; members?: EspnMember[]; transactions?: EspnTransaction[]; players?: { player?: EspnPlayer }[]; }",
+          "file": "src/adapters/espn/espnClient.ts",
+          "line": 74,
+          "end_line": 91
+        },
+        {
+          "name": "EspnMatchupSide",
+          "kind": "interface",
+          "signature": "export_statement:export interface EspnMatchupSide { teamId?: number; totalPoints?: number; rosterForCurrentScoringPeriod?: { entries?: EspnRosterEntry[] }; rosterForMatchupPeriod?: { entries?: EspnRosterEntry[] }; }",
+          "file": "src/adapters/espn/espnClient.ts",
+          "line": 41,
+          "end_line": 46
+        },
+        {
+          "name": "EspnMember",
+          "kind": "interface",
+          "signature": "export_statement:export interface EspnMember { id: string; // SWID, e.g. \"{XXXX-...}\" displayName?: string; firstName?: string; lastName?: string; }",
+          "file": "src/adapters/espn/espnClient.ts",
+          "line": 55,
+          "end_line": 60
+        },
+        {
+          "name": "EspnPlayer",
+          "kind": "interface",
+          "signature": "export_statement:export interface EspnPlayer { id: number; fullName?: string; defaultPositionId?: number; proTeamId?: number; injuryStatus?: string | null; ownership?: { percentOwned?: number; percentChange?: number }; }",
+          "file": "src/adapters/espn/espnClient.ts",
+          "line": 14,
+          "end_line": 21
+        },
+        {
+          "name": "EspnRosterEntry",
+          "kind": "interface",
+          "signature": "export_statement:export interface EspnRosterEntry { lineupSlotId?: number; playerId?: number; playerPoolEntry?: { player?: EspnPlayer }; }",
+          "file": "src/adapters/espn/espnClient.ts",
+          "line": 23,
+          "end_line": 27
+        },
+        {
+          "name": "EspnScheduleGame",
+          "kind": "interface",
+          "signature": "export_statement:export interface EspnScheduleGame { id?: number; matchupPeriodId?: number; home?: EspnMatchupSide; away?: EspnMatchupSide; }",
+          "file": "src/adapters/espn/espnClient.ts",
+          "line": 48,
+          "end_line": 53
+        },
+        {
+          "name": "EspnTeam",
+          "kind": "interface",
+          "signature": "export_statement:export interface EspnTeam { id: number; abbrev?: string; location?: string; nickname?: string; name?: string; owners?: string[]; points?: number; record?: { overall?: { wins?: number; losses?: number; ties?: number; pointsFor?: number; pointsAgainst?: number } }; roster?: { entries?: EspnRosterEntry[] }; }",
+          "file": "src/adapters/espn/espnClient.ts",
+          "line": 29,
+          "end_line": 39
+        },
+        {
+          "name": "EspnTransaction",
+          "kind": "interface",
+          "signature": "export_statement:export interface EspnTransaction { id?: string; type?: string; status?: string; scoringPeriodId?: number; bidAmount?: number; proposedDate?: number; teamId?: number; items?: { type?: string; playerId?: number; fromTeamId?: number; toTeamId?: number }[]; }",
+          "file": "src/adapters/espn/espnClient.ts",
+          "line": 62,
+          "end_line": 71
+        }
+      ]
+    },
+    {
       "id": "sleepbot.adapters.interface",
       "kind": "module",
       "name": "Interface",
@@ -935,40 +1121,40 @@
           "kind": "variable",
           "signature": "export_statement:export const configSchema = z .object({ leagues: z.array(leagueEntrySchema).min(1, \"at least one league must be configured\"), }) .superRefine((cfg, ctx) => { const seen = new Set<string>(); for (const [i, league] of cfg.leagues.entries()) { if (seen.has(league.id)) { ctx.addIssue({ code: z.ZodIssueCode.custom, message: `duplicate league id \"${league.id}\" — ids must be unique`, path: [\"leagues\", i, \"id\"], }); } seen.add(league.id); } });",
           "file": "src/config/schema.ts",
-          "line": 81,
-          "end_line": 97
+          "line": 84,
+          "end_line": 100
         },
         {
           "name": "export const leagueEntrySchema = z\n  .object({\n    id: z.string().min(1, \"league id (your own label) is required\"),\n    platform: z.enum([\"sleeper\", \"espn\"]),\n    sleeper: sleeperConfig.optional(),\n    espn: espnConfig.optional(),\n    /**\n     * How to value players for this league: \"redraft\" (Sleeper season-long\n     * ranks — the default; covers kickers, doesn't inflate rookies) or\n     * \"dynasty\" (KeepTradeCut long-term values). Affects draft recommendations\n     * and trade-fairness warnings.\n     */\n    valueMode: z.enum([\"redraft\", \"dynasty\"]).default(\"redraft\"),\n    /** Opt into the autonomous manager for this league (off unless present). */\n    agent: agentConfig.optional(),\n  })\n  .superRefine((entry, ctx) => {\n    if (entry.platform === \"sleeper\" && !entry.sleeper) {\n      ctx.addIssue({\n        code: z.ZodIssueCode.custom,\n        message: `league \"${entry.id}\" has platform \"sleeper\" but no \"sleeper\" config block`,\n        path: [\"sleeper\"],\n      });\n    }\n    if (entry.platform === \"espn\" && !entry.espn) {\n      ctx.addIssue({\n        code: z.ZodIssueCode.custom,\n        message: `league \"${entry.id}\" has platform \"espn\" but no \"espn\" config block`,\n        path: [\"espn\"],\n      });\n    }\n  });",
           "kind": "variable",
           "signature": "export_statement:export const leagueEntrySchema = z .object({ id: z.string().min(1, \"league id (your own label) is required\"), platform: z.enum([\"sleeper\", \"espn\"]), sleeper: sleeperConfig.optional(), espn: espnConfig.optional(), /** * How to value players for this league: \"redraft\" (Sleeper season-long * ranks — the default; covers kickers, doesn't inflate rookies) or * \"dynasty\" (KeepTradeCut long-term values). Affects draft recommendations * and trade-fairness warnings. */ valueMode: z.enum([\"redraft\", \"dynasty\"]).default(\"redraft\"), /** Opt into the autonomous manager for this league (off unless present). */ agent: agentConfig.optional(), }) .superRefine((entry, ctx) => { if (entry.platform === \"sleeper\" && !entry.sleeper) { ctx.addIssue({ code: z.ZodIssueCode.custom, message: `league \"${entry.id}\" has platform \"sleeper\" but no \"sleeper\" config block`, path: [\"sleeper\"], }); } if (entry.platform === \"espn\" && !entry.espn) { ctx.addIssue({ code: z.ZodIssueCode.custom, message: `league \"${entry.id}\" has platform \"espn\" but no \"espn\" config block`, path: [\"espn\"], }); } });",
           "file": "src/config/schema.ts",
-          "line": 48,
-          "end_line": 79
+          "line": 51,
+          "end_line": 82
         },
         {
           "name": "resolveEnvRef",
           "kind": "function",
           "signature": "export_statement:export function resolveEnvRef(value: string): string { if (!value.startsWith(\"env:\")) return value; const varName = value.slice(\"env:\".length); const resolved = process.env[varName]; if (resolved === undefined || resolved === \"\") { throw new Error( `config references \"${value}\" but environment variable ${varName} is not set`, ); } return resolved; }",
           "file": "src/config/schema.ts",
-          "line": 107,
-          "end_line": 117
+          "line": 110,
+          "end_line": 120
         },
         {
           "name": "LeagueEntry",
           "kind": "type",
           "signature": "export_statement:export type LeagueEntry = z.infer<typeof leagueEntrySchema>;",
           "file": "src/config/schema.ts",
-          "line": 99,
-          "end_line": 99
+          "line": 102,
+          "end_line": 102
         },
         {
           "name": "SleepBotConfig",
           "kind": "type",
           "signature": "export_statement:export type SleepBotConfig = z.infer<typeof configSchema>;",
           "file": "src/config/schema.ts",
-          "line": 100,
-          "end_line": 100
+          "line": 103,
+          "end_line": 103
         }
       ]
     },
@@ -993,8 +1179,8 @@
           "kind": "function",
           "signature": "export_statement:export async function buildAppContext(config: ConfigRegistry, storeOverride?: Store): Promise<AppContext> { const store = storeOverride ?? (await createStore()); // Postgres when DATABASE_URL is set, else JSON file // Store-authoritative after first seed: adopt a stored config if present, else // seed the store from the env/file config we were handed (dec.ui-config-editing). await reconcileConfig(config, store); const audit = new AuditLog(store); const pending = new PendingStore(store); const rules = new RulesEngine(await loadRulesConfig()); // One shared Sleeper client so the ~5MB players dump is cached across the // adapters and both value bridges. const sleeperClient = new SleeperClient(); // Defenses aren't ranked by KTC or Sleeper, so overlay a DST tier onto both // value modes (its player ids are team codes, which is how Sleeper keys DEF). const dst = await loadDstValueMap(); const redraftValue = withDst(buildRedraftValue(sleeperClient), dst); const dynastyValue = withDst(await buildDynastyValue(sleeperClient), dst); // Per-league selection: a league's config `valueMode` decides which to use. const valueFor = (leagueId: string): ValueProvider => config.get(leagueId).valueMode === \"dynasty\" ? dynastyValue : redraftValue; // One shared Sleeper write session for ALL leagues: the token is a single // account credential, so sharing it means a UI update (or a needs-reauth on a // failed write) applies everywhere at once. const resolved = await resolveSleeperToken(store); let tokenSource = resolved.source; const sleeperSession = new SleeperSessionProvider({ token: resolved.token }); const adapters = new Map<string, WriteableLeagueAdapter>(); const adapterFor = (leagueId: string): WriteableLeagueAdapter => { let adapter = adapters.get(leagueId); if (!adapter) { adapter = buildAdapter(config.get(leagueId), sleeperClient, sleeperSession); adapters.set(leagueId, adapter); } return adapter; }; const pipeline = new ActionPipeline({ rules, audit, pending, valueFor, adapterFor }); const draft = new DraftAssistant({ adapterFor, valueFor }); const chatHistory = new ChatHistory(store); const memory = new MemoryStore(store); return { config, adapterFor, valueFor, pipeline, audit, draft, chatHistory, memory, store, async reload() { const stored = await store.get<unknown>(\"config\", \"current\"); if (stored != null) config.applyConfig(ConfigRegistry.validate(stored, \"stored config\")); adapters.clear(); // rebuild against the new config (they share sleeperSession) }, async saveConfig(parsed: unknown) { const validated = ConfigRegistry.validate(parsed, \"submitted config\"); await store.put(\"config\", \"current\", validated); config.applyConfig(validated); adapters.clear(); }, async resetConfigToEnv() { const seed = ConfigRegistry.load(); await store.put(\"config\", \"current\", seed.config); config.applyConfig(seed.config); adapters.clear(); }, secretsEnabled, async setSleeperToken(token: string) { if (!secretsEnabled()) { throw new Error( \"SLEEPBOT_SECRET_KEY is not set — cannot store the Sleeper token. Set it (a 32-byte key) and redeploy to enable saving secrets from the UI.\", ); } const trimmed = token.trim(); inspectToken(trimmed); // reject non-JWTs before we store anything await store.put(\"secrets\", \"sleeper_token\", { ciphertext: encryptSecret(trimmed), updatedAt: new Date().toISOString(), }); sleeperSession.setToken(trimmed); // applies live; clears needs-reauth tokenSource = \"store\"; console.error(\"[secrets] Sleeper write token updated from the settings panel.\"); }, async clearSleeperToken() { await store.delete(\"secrets\", \"sleeper_token\"); const env = envSleeperToken(); sleeperSession.setToken(env); tokenSource = env ? \"env\" : \"none\"; console.error(\"[secrets] stored Sleeper token cleared; reverted to the env token if present.\"); }, sleeperTokenStatus(): SleeperTokenStatus { return { ...sleeperSession.status(), source: tokenSource, editable: secretsEnabled() }; }, }; }",
           "file": "src/core/context.ts",
-          "line": 79,
-          "end_line": 185
+          "line": 81,
+          "end_line": 187
         },
         {
           "name": "SleepBotOperations",
@@ -1017,16 +1203,16 @@
           "kind": "interface",
           "signature": "export_statement:export interface AppContext { config: ConfigRegistry; /** The write-capable adapter for a league (also serves reads), cached per league. */ adapterFor(leagueId: string): WriteableLeagueAdapter; /** Player value for a league, per its configured mode (redraft vs dynasty). */ valueFor(leagueId: string): ValueProvider; pipeline: ActionPipeline; audit: AuditLog; draft: DraftAssistant; /** Persistent chat conversations (main chat history). */ chatHistory: ChatHistory; /** Long-term chat memory (durable facts injected into every chat). */ memory: MemoryStore; /** The shared persistence store (audit, pending, agent outbox). */ store: Store; // --- UI-editable config + secrets (dec.ui-config-editing) ---------------- /** Re-read the leagues config from the store and rebuild per-league adapters. */ reload(): Promise<void>; /** Validate + persist a new leagues config, then adopt it live. Throws (persists nothing) on invalid input. */ saveConfig(parsed: unknown): Promise<void>; /** Discard the stored config and reseed it from the env/file (`SLEEPBOT_CONFIG_JSON` / config file). */ resetConfigToEnv(): Promise<void>; /** Whether secrets can be stored (SLEEPBOT_SECRET_KEY is set). */ secretsEnabled(): boolean; /** Encrypt + store the Sleeper write token and apply it live (clears needs-reauth). */ setSleeperToken(token: string): Promise<void>; /** Remove the stored token and revert to the env seed (if any). */ clearSleeperToken(): Promise<void>; /** Status of the active Sleeper write token, for the settings panel. */ sleeperTokenStatus(): SleeperTokenStatus; }",
           "file": "src/core/context.ts",
-          "line": 41,
-          "end_line": 72
+          "line": 43,
+          "end_line": 74
         },
         {
           "name": "SleeperTokenStatus",
           "kind": "interface",
           "signature": "export_statement:export interface SleeperTokenStatus extends SessionStatus { /** \"store\" = set from the UI (encrypted in the DB); \"env\" = the SLEEPER_TOKEN seed; \"none\" = unset. */ source: \"store\" | \"env\" | \"none\"; /** False when SLEEPBOT_SECRET_KEY is unset — the token can't be saved from the UI. */ editable: boolean; }",
           "file": "src/core/context.ts",
-          "line": 34,
-          "end_line": 39
+          "line": 36,
+          "end_line": 41
         },
         {
           "name": "export { SleepBotOperations, proposalOutcome } from \"./operations.js\";",
@@ -1169,6 +1355,16 @@
           "end_line": 1
         }
       ]
+    },
+    {
+      "id": "sleepbot.espn-api",
+      "kind": "actor",
+      "name": "EspnApi",
+      "state": "synced",
+      "paths": [],
+      "files": [],
+      "contracts": [],
+      "symbols": []
     },
     {
       "id": "sleepbot.gate",
@@ -2615,6 +2811,16 @@
       "description": "records every proposed / executed / rejected action"
     },
     {
+      "from": "sleepbot.adapters.espn",
+      "to": "sleepbot.adapters.interface",
+      "description": "implements LeagueAdapter (read-only)"
+    },
+    {
+      "from": "sleepbot.adapters.espn",
+      "to": "sleepbot.espn-api",
+      "description": "fetches league data over HTTP (cookie auth)"
+    },
+    {
       "from": "sleepbot.adapters.sleeper",
       "to": "sleepbot.adapters.interface",
       "description": "implements LeagueAdapter"
@@ -2796,6 +3002,13 @@
       "severity": "warning",
       "message": "leaf node `sleepbot.actions` declares no contract",
       "node": "sleepbot.actions",
+      "path": null
+    },
+    {
+      "code": "CAIRN_CONTRACT_LEAF_UNCOVERED",
+      "severity": "warning",
+      "message": "leaf node `sleepbot.adapters.espn` declares no contract",
+      "node": "sleepbot.adapters.espn",
       "path": null
     },
     {
