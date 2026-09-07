@@ -18,7 +18,7 @@ export function TabBar<T extends string>({
           className={cn(
             "h-8 rounded-lg px-3.5 text-sm font-medium transition-colors",
             t === active
-              ? "bg-accent text-[#04122a] font-semibold shadow-sm shadow-accent/30"
+              ? "bg-accent text-on-accent font-semibold shadow-sm shadow-accent/30"
               : "text-muted hover:bg-surface-2 hover:text-text",
           )}
         >

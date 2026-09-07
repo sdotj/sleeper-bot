@@ -13,7 +13,7 @@ export function Button({
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "ghost" | "primary" }) {
   const variants = {
     ghost: "bg-surface-2 text-muted border border-border hover:text-text hover:border-border-strong",
-    primary: "bg-accent text-[#04122a] font-semibold hover:bg-accent-strong",
+    primary: "bg-accent text-on-accent font-semibold hover:bg-accent-strong",
   };
   return (
     <button

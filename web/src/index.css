@@ -1,41 +1,117 @@
 @import "tailwindcss";
 
-/* Design tokens (Tailwind v4 @theme -> utilities like bg-surface, text-muted). */
+/* Design tokens (Tailwind v4 @theme -> utilities like bg-surface, text-muted).
+   Dark is the default set; light is applied via [data-theme="light"] or the OS
+   setting in "system" mode. Refined palette ported from the Figma UI refresh. */
 @theme {
   /* Surfaces */
-  --color-bg: #0a0e18;
-  --color-surface: #121829;
-  --color-surface-2: #182136;
-  --color-elevated: #202a42;
-  --color-border: #232d45;
-  --color-border-strong: #35415f;
+  --color-bg: #0b0f1a;
+  --color-surface: #141a28;
+  --color-surface-2: #1b2333;
+  --color-elevated: #212c44;
+  --color-border: #242d3e;
+  --color-border-strong: #323d53;
 
   /* Text */
-  --color-text: #e8edf7;
-  --color-muted: #8a97b6;
-  --color-faint: #63719a;
+  --color-text: #eaeef6;
+  --color-muted: #9ba7bb;
+  --color-faint: #606d84;
 
   /* Brand / semantic */
-  --color-accent: #5b9dff;
-  --color-accent-strong: #3d86f5;
-  --color-mine: #34d399;
-  --color-ok: #34d399;
-  --color-warn: #fbbf24;
-  --color-danger: #f87171;
+  --color-accent: #3d7bff;
+  --color-accent-strong: #5c93ff;
+  --color-accent-tint: #18233b;
+  --color-on-accent: #ffffff;
+  --color-mine: #3ad6a2;
+  --color-ok: #3ad6a2;
+  --color-warn: #f4be57;
+  --color-danger: #f2685c;
 
   /* Position accents */
-  --color-pos-qb: #f472b6;
-  --color-pos-rb: #4ade80;
+  --color-pos-qb: #c084fc;
+  --color-pos-rb: #34d399;
   --color-pos-wr: #60a5fa;
   --color-pos-te: #fbbf24;
-  --color-pos-k: #c4b5fd;
+  --color-pos-k: #f472b6;
   --color-pos-def: #94a3b8;
+
+  /* Ambient background glow (behind the app) */
+  --color-bg-glow: #131d33;
 
   --radius-card: 0.85rem;
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
+/* Light palette — explicit toggle, or system light when not forced dark. */
 @layer base {
+  :root[data-theme="light"] {
+    --color-bg: #f6f7f9;
+    --color-surface: #ffffff;
+    --color-surface-2: #eef1f6;
+    --color-elevated: #ffffff;
+    --color-border: #e4e8ef;
+    --color-border-strong: #cfd6e2;
+    --color-text: #141922;
+    --color-muted: #5a6478;
+    --color-faint: #949cad;
+    --color-accent: #2563eb;
+    --color-accent-strong: #1d4fd7;
+    --color-accent-tint: #eaf1fe;
+    --color-on-accent: #ffffff;
+    --color-mine: #0e9f6e;
+    --color-ok: #0e9f6e;
+    --color-warn: #b26b00;
+    --color-danger: #dc2626;
+    --color-pos-qb: #9333ea;
+    --color-pos-rb: #059669;
+    --color-pos-wr: #2563eb;
+    --color-pos-te: #d97706;
+    --color-pos-k: #db2777;
+    --color-pos-def: #64748b;
+    --color-bg-glow: transparent;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --color-bg: #f6f7f9;
+      --color-surface: #ffffff;
+      --color-surface-2: #eef1f6;
+      --color-elevated: #ffffff;
+      --color-border: #e4e8ef;
+      --color-border-strong: #cfd6e2;
+      --color-text: #141922;
+      --color-muted: #5a6478;
+      --color-faint: #949cad;
+      --color-accent: #2563eb;
+      --color-accent-strong: #1d4fd7;
+      --color-accent-tint: #eaf1fe;
+      --color-on-accent: #ffffff;
+      --color-mine: #0e9f6e;
+      --color-ok: #0e9f6e;
+      --color-warn: #b26b00;
+      --color-danger: #dc2626;
+      --color-pos-qb: #9333ea;
+      --color-pos-rb: #059669;
+      --color-pos-wr: #2563eb;
+      --color-pos-te: #d97706;
+      --color-pos-k: #db2777;
+      --color-pos-def: #64748b;
+      --color-bg-glow: transparent;
+    }
+  }
+
+  /* Native form controls / scrollbars follow the active theme. */
+  :root {
+    color-scheme: dark;
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      color-scheme: light;
+    }
+  }
+
   html,
   body,
   #root {
@@ -43,7 +119,7 @@
   }
   body {
     background:
-      radial-gradient(1100px 520px at 50% -15%, #16203a 0%, transparent 62%),
+      radial-gradient(1100px 520px at 50% -15%, var(--color-bg-glow) 0%, transparent 62%),
       var(--color-bg);
     background-attachment: fixed;
     color: var(--color-text);

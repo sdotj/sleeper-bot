@@ -138,7 +138,7 @@ export function Bubble({
       className={cn(
         "max-w-[85%] whitespace-pre-wrap rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed",
         role === "user"
-          ? "self-end rounded-br-md bg-accent text-[#04122a]"
+          ? "self-end rounded-br-md bg-accent text-on-accent"
           : "self-start rounded-bl-md border border-border bg-surface-2",
         muted && "text-muted",
       )}

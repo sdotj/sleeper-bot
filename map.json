@@ -1295,6 +1295,7 @@
         "web/src/lib/api.ts",
         "web/src/lib/auth.ts",
         "web/src/lib/cn.ts",
+        "web/src/lib/theme.ts",
         "web/src/lib/types.ts",
         "web/src/main.tsx",
         "web/vite.config.ts"
@@ -1392,10 +1393,18 @@
         {
           "name": "TabBar",
           "kind": "function",
-          "signature": "export_statement:export function TabBar<T extends string>({ tabs, active, onSelect, }: { tabs: readonly T[]; active: T; onSelect: (tab: T) => void; }) { return ( <nav className=\"flex flex-wrap gap-1 rounded-xl border border-border bg-surface/60 p-1\"> {tabs.map((t) => ( <button key={t} onClick={() => onSelect(t)} className={cn( \"h-8 rounded-lg px-3.5 text-sm font-medium transition-colors\", t === active ? \"bg-accent text-[#04122a] font-semibold shadow-sm shadow-accent/30\" : \"text-muted hover:bg-surface-2 hover:text-text\", )} > {t} </button> ))} </nav> ); }",
+          "signature": "export_statement:export function TabBar<T extends string>({ tabs, active, onSelect, }: { tabs: readonly T[]; active: T; onSelect: (tab: T) => void; }) { return ( <nav className=\"flex flex-wrap gap-1 rounded-xl border border-border bg-surface/60 p-1\"> {tabs.map((t) => ( <button key={t} onClick={() => onSelect(t)} className={cn( \"h-8 rounded-lg px-3.5 text-sm font-medium transition-colors\", t === active ? \"bg-accent text-on-accent font-semibold shadow-sm shadow-accent/30\" : \"text-muted hover:bg-surface-2 hover:text-text\", )} > {t} </button> ))} </nav> ); }",
           "file": "web/src/components/ui/Tabs.tsx",
           "line": 3,
           "end_line": 30
+        },
+        {
+          "name": "applyTheme",
+          "kind": "function",
+          "signature": "export_statement:export function applyTheme(theme: Theme = current): void { const root = document.documentElement; if (theme === \"system\") root.removeAttribute(\"data-theme\"); else root.setAttribute(\"data-theme\", theme); }",
+          "file": "web/src/lib/theme.ts",
+          "line": 27,
+          "end_line": 31
         },
         {
           "name": "authHeaders",
@@ -1414,6 +1423,22 @@
           "end_line": 4
         },
         {
+          "name": "cycleTheme",
+          "kind": "function",
+          "signature": "export_statement:export function cycleTheme(): void { setTheme(current === \"system\" ? \"light\" : current === \"light\" ? \"dark\" : \"system\"); }",
+          "file": "web/src/lib/theme.ts",
+          "line": 49,
+          "end_line": 51
+        },
+        {
+          "name": "getTheme",
+          "kind": "function",
+          "signature": "export_statement:export function getTheme(): Theme { return current; }",
+          "file": "web/src/lib/theme.ts",
+          "line": 33,
+          "end_line": 35
+        },
+        {
           "name": "getToken",
           "kind": "function",
           "signature": "export_statement:export function getToken(): string | null { return readToken(); }",
@@ -1428,6 +1453,14 @@
           "file": "web/src/lib/auth.ts",
           "line": 99,
           "end_line": 106
+        },
+        {
+          "name": "setTheme",
+          "kind": "function",
+          "signature": "export_statement:export function setTheme(theme: Theme): void { current = theme; try { localStorage.setItem(KEY, theme); } catch { /* ignore */ } applyTheme(theme); listeners.forEach((l) => l()); }",
+          "file": "web/src/lib/theme.ts",
+          "line": 37,
+          "end_line": 46
         },
         {
           "name": "signalAuthRequired",
@@ -1452,6 +1485,14 @@
           "file": "web/src/lib/auth.ts",
           "line": 108,
           "end_line": 110
+        },
+        {
+          "name": "useTheme",
+          "kind": "function",
+          "signature": "export_statement:export function useTheme(): Theme { return useSyncExternalStore( (cb) => { listeners.add(cb); return () => { listeners.delete(cb); }; }, () => current, () => current, ); }",
+          "file": "web/src/lib/theme.ts",
+          "line": 53,
+          "end_line": 64
         },
         {
           "name": "AgentStatus",
@@ -1636,6 +1677,14 @@
           "file": "web/src/lib/types.ts",
           "line": 31,
           "end_line": 41
+        },
+        {
+          "name": "Theme",
+          "kind": "type",
+          "signature": "export_statement:export type Theme = \"system\" | \"light\" | \"dark\";",
+          "file": "web/src/lib/theme.ts",
+          "line": 9,
+          "end_line": 9
         },
         {
           "name": "export { Async, EmptyState, Spinner, type AsyncState } from \"./feedback\";",
