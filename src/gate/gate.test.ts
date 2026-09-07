@@ -108,6 +108,43 @@ describe("registerAuth (integration)", () => {
     expect(withTok.json()).toEqual([{ id: "L1" }]);
   });
 
+  it("does not let a percent-encoded path bypass the guard (regression #1)", async () => {
+    app = await build();
+    const encoded = await app.inject({ method: "GET", url: "/%61pi/leagues" }); // decodes to /api/leagues
+    expect(encoded.statusCode).toBe(401);
+    expect(encoded.json().code).toBe("auth_required");
+    const { token } = (
+      await app.inject({ method: "POST", url: "/api/login", payload: { username: "sam", password: "s3cret" } })
+    ).json();
+    const ok = await app.inject({
+      method: "GET",
+      url: "/%61pi/leagues",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(ok.statusCode).toBe(200);
+  });
+
+  it("refuses to start with a partially-configured gate (fail closed, #2)", async () => {
+    delete process.env.SLEEPBOT_JWT_SECRET; // user + hash set, secret missing
+    await expect(build()).rejects.toThrow(/partially configured/);
+  });
+
+  it("rejects a weak secret or malformed password hash at startup (#2)", async () => {
+    process.env.SLEEPBOT_JWT_SECRET = "short";
+    await expect(build()).rejects.toThrow(/too short/);
+    process.env.SLEEPBOT_JWT_SECRET = "a-sufficiently-long-secret";
+    process.env.SLEEPBOT_AUTH_PASSWORD_HASH = "not-a-scrypt-hash";
+    await expect(build()).rejects.toThrow(/scrypt hash/);
+  });
+
+  it("SLEEPBOT_REQUIRE_AUTH forces auth even when unconfigured (#2)", async () => {
+    delete process.env.SLEEPBOT_AUTH_USER;
+    delete process.env.SLEEPBOT_AUTH_PASSWORD_HASH;
+    delete process.env.SLEEPBOT_JWT_SECRET;
+    process.env.SLEEPBOT_REQUIRE_AUTH = "true";
+    await expect(build()).rejects.toThrow(/refusing to start without auth/i);
+  });
+
   it("is a no-op (API open) when auth is not configured", async () => {
     delete process.env.SLEEPBOT_AUTH_USER;
     delete process.env.SLEEPBOT_AUTH_PASSWORD_HASH;

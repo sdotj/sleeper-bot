@@ -25,6 +25,13 @@ into the image.
 | `SLEEPBOT_AUTH_PASSWORD_HASH` | **for public deploy** | scrypt hash of the password — run `npm run hash-password -- '<pw>'`. The raw password is never stored. |
 | `SLEEPBOT_JWT_SECRET` | **for public deploy** | Long random string signing login tokens. Rotating it logs everyone out. |
 | `SLEEPBOT_AUTH_TTL` | no | Login lifetime, jsonwebtoken format (default `7d`). |
+| `SLEEPBOT_REQUIRE_AUTH` | no | Set truthy to **refuse startup** unless the login gate is fully configured — a safety switch for public deploys. |
+
+> The gate **fails closed**: a *partially* configured gate (only some of the three
+> vars set), a JWT secret under 16 chars, or a malformed password hash all abort
+> startup rather than silently running open. Leave all three unset only for
+> localhost; set `SLEEPBOT_REQUIRE_AUTH=true` in production so a forgotten secret
+> can't leave the API open.
 | `SLEEPBOT_SECRET_KEY` | for UI secrets | 32-byte key (`npm run gen-secret-key`) that encrypts the Sleeper token when you set it from the Settings panel. Unset ⇒ that field is read-only and `SLEEPER_TOKEN` (env) is used. |
 
 The **autonomous manager** runs only for leagues with an `agent` block in their

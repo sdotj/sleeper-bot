@@ -47,6 +47,14 @@ export function verifyPassword(password: string, encoded: string): boolean {
   }
 }
 
+/** True when `encoded` has the shape of a scrypt hash from {@link hashPassword}. */
+export function isScryptHash(encoded: string): boolean {
+  const parts = encoded.split("$");
+  if (parts.length !== 6 || parts[0] !== "scrypt") return false;
+  const [, n, r, p, salt, hash] = parts;
+  return [n, r, p].every((x) => Number.isInteger(Number(x)) && Number(x) > 0) && !!salt && !!hash;
+}
+
 /** Constant-time string equality (used for the username, which is not secret but shouldn't leak via timing). */
 export function safeEqual(a: string, b: string): boolean {
   const ab = Buffer.from(a);

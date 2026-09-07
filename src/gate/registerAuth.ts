@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import fastifyJwt from "@fastify/jwt";
 import { loadGateConfig, type GateConfig } from "./config.js";
-import { safeEqual, verifyPassword } from "./credentials.js";
+import { isScryptHash, safeEqual, verifyPassword } from "./credentials.js";
 
 /**
  * Login gate for the HTTP API (dec.api-auth-gate). When credentials + a JWT
@@ -19,17 +19,30 @@ import { safeEqual, verifyPassword } from "./credentials.js";
  */
 export async function registerAuth(app: FastifyInstance): Promise<GateConfig> {
   const gate = loadGateConfig();
+  const requireAuth = /^(1|true|yes|on)$/i.test(process.env.SLEEPBOT_REQUIRE_AUTH ?? "");
 
+  // Fail CLOSED on misconfiguration: a half-set gate must not silently run open
+  // (a forgotten prod secret used to leave the whole API unauthenticated).
+  if (gate.partial) {
+    throw new Error(
+      "[gate] auth is partially configured — set ALL of SLEEPBOT_AUTH_USER, " +
+        "SLEEPBOT_AUTH_PASSWORD_HASH, and SLEEPBOT_JWT_SECRET (or none). Refusing to start with a half-set gate.",
+    );
+  }
   if (!gate.enabled) {
-    if (gate.partial) {
-      console.error(
-        "[gate] auth PARTIALLY configured — need SLEEPBOT_AUTH_USER, " +
-          "SLEEPBOT_AUTH_PASSWORD_HASH, and SLEEPBOT_JWT_SECRET. API is OPEN until all three are set.",
-      );
-    } else {
-      console.error("[gate] auth disabled (no SLEEPBOT_AUTH_* set) — the HTTP API is open. Fine for localhost; set all three before any public deploy.");
+    if (requireAuth) {
+      throw new Error("[gate] SLEEPBOT_REQUIRE_AUTH is set but the login gate is not configured — refusing to start without auth.");
     }
+    console.error("[gate] auth disabled (no SLEEPBOT_AUTH_* set) — the HTTP API is open. Fine for localhost; set all three (or SLEEPBOT_REQUIRE_AUTH) before any public deploy.");
     return gate;
+  }
+
+  // Validate the credential material before we start trusting it.
+  if (gate.secret.length < 16) {
+    throw new Error("[gate] SLEEPBOT_JWT_SECRET is too short (need at least 16 chars; use `openssl rand -hex 32`).");
+  }
+  if (!isScryptHash(gate.passwordHash)) {
+    throw new Error("[gate] SLEEPBOT_AUTH_PASSWORD_HASH is not a valid scrypt hash — run `npm run hash-password`.");
   }
 
   await app.register(fastifyJwt, { secret: gate.secret });
@@ -66,15 +79,33 @@ export async function registerAuth(app: FastifyInstance): Promise<GateConfig> {
   return gate;
 }
 
-/** Routes reachable without a login token. */
+/** The request path, percent-decoded, without the query string. */
+function decodedPath(rawUrl: string | undefined): string {
+  const p = (rawUrl ?? "").split("?")[0];
+  try {
+    return decodeURIComponent(p);
+  } catch {
+    return p; // malformed encoding — leave as-is (it won't match "/api/" literally)
+  }
+}
+
+/**
+ * Routes reachable without a login token. DEFAULT-DENY for the JSON API: a
+ * request is public only if it's a known public route, or it is neither a
+ * matched `/api/*` route NOR decodes to an `/api/` path. Checking BOTH the
+ * matched route (`routeOptions.url`, which Fastify has already %-decoded and
+ * matched) and the decoded raw path closes the `/%61pi/leagues` bypass — an
+ * encoded path still resolves to its real `/api/*` route and is enforced.
+ */
 function isPublic(req: FastifyRequest): boolean {
-  const path = (req.raw.url ?? "").split("?")[0];
-  if (path === "/api/health") return true;
-  if (path === "/api/login") return true;
+  const route = req.routeOptions?.url ?? ""; // canonical matched route (may be "" for 404/static)
+  const path = decodedPath(req.raw.url);
+
+  if (route === "/api/health" || path === "/api/health") return true;
+  if (route === "/api/login" || path === "/api/login") return true;
   // Internal cron/webhook routes carry their own SLEEPBOT_INTERNAL_SECRET.
-  if (path.startsWith("/internal/")) return true;
-  // Anything that isn't the JSON API is the static GUI / SPA fallback — the
-  // login page itself must load unauthenticated.
-  if (!path.startsWith("/api/")) return true;
-  return false;
+  if (route.startsWith("/internal/") || path.startsWith("/internal/")) return true;
+  // Any request that is, or decodes to, an /api route needs a token; everything
+  // else (static assets, SPA fallback) is public so the login page can load.
+  return !(route.startsWith("/api/") || path.startsWith("/api/"));
 }

@@ -1387,10 +1387,10 @@
         {
           "name": "registerAuth",
           "kind": "function",
-          "signature": "export_statement:export async function registerAuth(app: FastifyInstance): Promise<GateConfig> { const gate = loadGateConfig(); if (!gate.enabled) { if (gate.partial) { console.error( \"[gate] auth PARTIALLY configured — need SLEEPBOT_AUTH_USER, \" + \"SLEEPBOT_AUTH_PASSWORD_HASH, and SLEEPBOT_JWT_SECRET. API is OPEN until all three are set.\", ); } else { console.error(\"[gate] auth disabled (no SLEEPBOT_AUTH_* set) — the HTTP API is open. Fine for localhost; set all three before any public deploy.\"); } return gate; } await app.register(fastifyJwt, { secret: gate.secret }); app.post(\"/api/login\", async (req: FastifyRequest, reply: FastifyReply) => { const body = (req.body ?? {}) as { username?: unknown; password?: unknown }; const username = typeof body.username === \"string\" ? body.username : \"\"; const password = typeof body.password === \"string\" ? body.password : \"\"; // Verify the password even when the username is wrong so response time // doesn't reveal whether the username exists. const userOk = safeEqual(username, gate.username); const passOk = verifyPassword(password, gate.passwordHash); if (!userOk || !passOk) { return reply.status(401).send({ error: \"invalid username or password\" }); } const token = app.jwt.sign({ sub: gate.username }, { expiresIn: gate.ttl }); return { token, username: gate.username }; }); app.addHook(\"onRequest\", async (req: FastifyRequest, reply: FastifyReply) => { if (isPublic(req)) return; try { await req.jwtVerify(); } catch { // `code: \"auth_required\"` lets the browser distinguish a login timeout // from a Sleeper-token reauth (which also returns 401 but keeps the session). return reply.status(401).send({ error: \"authentication required\", code: \"auth_required\" }); } }); console.error(`[gate] auth enabled for user \"${gate.username}\" (token TTL ${gate.ttl}).`); return gate; }",
+          "signature": "export_statement:export async function registerAuth(app: FastifyInstance): Promise<GateConfig> { const gate = loadGateConfig(); const requireAuth = /^(1|true|yes|on)$/i.test(process.env.SLEEPBOT_REQUIRE_AUTH ?? \"\"); // Fail CLOSED on misconfiguration: a half-set gate must not silently run open // (a forgotten prod secret used to leave the whole API unauthenticated). if (gate.partial) { throw new Error( \"[gate] auth is partially configured — set ALL of SLEEPBOT_AUTH_USER, \" + \"SLEEPBOT_AUTH_PASSWORD_HASH, and SLEEPBOT_JWT_SECRET (or none). Refusing to start with a half-set gate.\", ); } if (!gate.enabled) { if (requireAuth) { throw new Error(\"[gate] SLEEPBOT_REQUIRE_AUTH is set but the login gate is not configured — refusing to start without auth.\"); } console.error(\"[gate] auth disabled (no SLEEPBOT_AUTH_* set) — the HTTP API is open. Fine for localhost; set all three (or SLEEPBOT_REQUIRE_AUTH) before any public deploy.\"); return gate; } // Validate the credential material before we start trusting it. if (gate.secret.length < 16) { throw new Error(\"[gate] SLEEPBOT_JWT_SECRET is too short (need at least 16 chars; use `openssl rand -hex 32`).\"); } if (!isScryptHash(gate.passwordHash)) { throw new Error(\"[gate] SLEEPBOT_AUTH_PASSWORD_HASH is not a valid scrypt hash — run `npm run hash-password`.\"); } await app.register(fastifyJwt, { secret: gate.secret }); app.post(\"/api/login\", async (req: FastifyRequest, reply: FastifyReply) => { const body = (req.body ?? {}) as { username?: unknown; password?: unknown }; const username = typeof body.username === \"string\" ? body.username : \"\"; const password = typeof body.password === \"string\" ? body.password : \"\"; // Verify the password even when the username is wrong so response time // doesn't reveal whether the username exists. const userOk = safeEqual(username, gate.username); const passOk = verifyPassword(password, gate.passwordHash); if (!userOk || !passOk) { return reply.status(401).send({ error: \"invalid username or password\" }); } const token = app.jwt.sign({ sub: gate.username }, { expiresIn: gate.ttl }); return { token, username: gate.username }; }); app.addHook(\"onRequest\", async (req: FastifyRequest, reply: FastifyReply) => { if (isPublic(req)) return; try { await req.jwtVerify(); } catch { // `code: \"auth_required\"` lets the browser distinguish a login timeout // from a Sleeper-token reauth (which also returns 401 but keeps the session). return reply.status(401).send({ error: \"authentication required\", code: \"auth_required\" }); } }); console.error(`[gate] auth enabled for user \"${gate.username}\" (token TTL ${gate.ttl}).`); return gate; }",
           "file": "src/gate/registerAuth.ts",
           "line": 20,
-          "end_line": 67
+          "end_line": 80
         },
         {
           "name": "hashPassword",
@@ -1399,6 +1399,14 @@
           "file": "src/gate/credentials.ts",
           "line": 19,
           "end_line": 23
+        },
+        {
+          "name": "isScryptHash",
+          "kind": "function",
+          "signature": "export_statement:export function isScryptHash(encoded: string): boolean { const parts = encoded.split(\"$\"); if (parts.length !== 6 || parts[0] !== \"scrypt\") return false; const [, n, r, p, salt, hash] = parts; return [n, r, p].every((x) => Number.isInteger(Number(x)) && Number(x) > 0) && !!salt && !!hash; }",
+          "file": "src/gate/credentials.ts",
+          "line": 51,
+          "end_line": 56
         },
         {
           "name": "loadGateConfig",
@@ -1413,8 +1421,8 @@
           "kind": "function",
           "signature": "export_statement:export function safeEqual(a: string, b: string): boolean { const ab = Buffer.from(a); const bb = Buffer.from(b); if (ab.length !== bb.length) return false; return timingSafeEqual(ab, bb); }",
           "file": "src/gate/credentials.ts",
-          "line": 51,
-          "end_line": 56
+          "line": 59,
+          "end_line": 64
         },
         {
           "name": "verifyPassword",
