@@ -82,15 +82,23 @@ failure as a permanent null; the ChatPane loading/navigation race is closed.
   who is already rostered. Platform-agnostic (works off normalized `Roster`).
   FAAB affordability is left to the platform (an over-bid is now surfaced as a
   clean failure, not a false success).
+- ✅ **CI** — `.github/workflows/ci.yml` runs typecheck + `vitest run` (with a
+  disposable Postgres so the integration test runs) + web build + a production
+  `npm audit`, on every push/PR.
+- ✅ **Adapter capability flags** — `LeagueAdapter.capabilities { write, draft }`;
+  ESPN is `{false,false}` and reports write auth as `unsupported` (not
+  `needs-reauth`). The pipeline refuses writes on a read-only league and the UI
+  omits the Draft view for one.
 
-**Still deferred (documented single-writer constraint):** true multi-writer
-safety needs a store-atomic compare-and-set claim and append-only history — the
-per-process locks/version stamp are single-instance only. DB-side pagination and
-a CI workflow remain open. None block a single-instance deploy.
+**Consciously NOT done (scaling only; single-writer deploy):** the decision (Sep 8)
+was to stop here rather than build scaling groundwork with no payoff for a
+single-instance deploy. Left open, each behind the documented single-writer
+constraint:
 
-## Deferred (architecture, not vulnerabilities)
-
-- One generated operation catalog shared by MCP/chat/agent/HTTP (the audit's
-  structural recommendation); #10 validated the write path as the first step.
-- Explicit read/write/draft capability flags on adapters so UIs/tools can omit
-  unsupported operations (`EspnAdapter` currently throws for writes/drafts).
+- **Multi-writer safety** — a store-atomic compare-and-set claim (for the action
+  execution claim + config version) and append-only chat history. The current
+  per-process locks/version stamp are correct for one writer.
+- **DB-side pagination / filtering** — the audit called the whole-collection
+  fetches "accepted personal-scale constraints."
+- **One generated operation catalog** — the audit marked it optional; #10
+  validated the write path (the risky one) as the first step.
