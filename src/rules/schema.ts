@@ -40,22 +40,54 @@ export type WarnRule = z.infer<typeof warnRuleSchema>;
 export type RulesConfig = z.infer<typeof rulesConfigSchema>;
 
 /**
- * Load and validate rules config. A missing file is not an error — it yields
- * the safe defaults (manual mode, no rules). Override the path with
- * SLEEPBOT_RULES.
+ * Load and validate rules config — the write guardrails. Precedence (audit #5):
+ *
+ *  1. `SLEEPBOT_RULES_JSON` — inline JSON, the cloud seed (parallels
+ *     SLEEPBOT_CONFIG_JSON). Use this so a container ships with its guardrails.
+ *  2. An explicit file path (the `path` arg or `SLEEPBOT_RULES`).
+ *  3. The default `config/rules.json`.
+ *
+ * It fails CLOSED: only a genuinely-absent DEFAULT file (ENOENT) yields the safe
+ * defaults (manual mode, no rules). An explicitly-configured path that can't be
+ * read, a permission error, a directory in place of the file, invalid JSON, or a
+ * schema violation all THROW — guardrails must never silently disappear, because
+ * a per-league `auto` agent would then execute writes with no protection.
  */
 export async function loadRulesConfig(path?: string): Promise<RulesConfig> {
-  const target = path ?? process.env.SLEEPBOT_RULES ?? "config/rules.json";
+  const inline = process.env.SLEEPBOT_RULES_JSON;
+  if (inline?.trim()) return parseRulesConfig(inline, "SLEEPBOT_RULES_JSON");
+
+  const explicit = path ?? process.env.SLEEPBOT_RULES;
+  const target = explicit ?? "config/rules.json";
   let raw: string;
   try {
     raw = await readFile(target, "utf8");
-  } catch {
-    return rulesConfigSchema.parse({}); // defaults
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (!explicit && code === "ENOENT") return rulesConfigSchema.parse({}); // no default file → safe defaults
+    throw new Error(
+      `could not read rules config at ${target} (${code ?? (err as Error).message}) — ` +
+        (explicit
+          ? "this path was set explicitly via SLEEPBOT_RULES. "
+          : "the default rules file exists but is unreadable. ") +
+        "Refusing to start with write guardrails silently disabled; fix the path or set SLEEPBOT_RULES_JSON.",
+    );
   }
-  const parsed = rulesConfigSchema.safeParse(JSON.parse(raw));
+  return parseRulesConfig(raw, target);
+}
+
+/** Parse + schema-validate rules JSON from a named source; throws with detail. */
+function parseRulesConfig(raw: string, source: string): RulesConfig {
+  let json: unknown;
+  try {
+    json = JSON.parse(raw);
+  } catch (err) {
+    throw new Error(`rules config at ${source} is not valid JSON: ${(err as Error).message}`);
+  }
+  const parsed = rulesConfigSchema.safeParse(json);
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `  - ${i.path.join(".")}: ${i.message}`).join("\n");
-    throw new Error(`invalid rules config at ${target}:\n${issues}`);
+    throw new Error(`invalid rules config at ${source}:\n${issues}`);
   }
   return parsed.data;
 }

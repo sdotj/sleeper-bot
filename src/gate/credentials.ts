@@ -1,4 +1,12 @@
-import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { randomBytes, scrypt, scryptSync, timingSafeEqual } from "node:crypto";
+import { promisify } from "node:util";
+
+const scryptAsync = promisify(scrypt) as (
+  password: string | Buffer,
+  salt: string | Buffer,
+  keylen: number,
+  options: { N: number; r: number; p: number },
+) => Promise<Buffer>;
 
 /**
  * Password hashing for the single predetermined login (dec.api-auth-gate).
@@ -41,6 +49,30 @@ export function verifyPassword(password: string, encoded: string): boolean {
     expected = Buffer.from(hashHex, "hex");
     if (expected.length === 0) return false;
     const actual = scryptSync(password, Buffer.from(saltHex, "hex"), expected.length, { N: n, r, p });
+    return actual.length === expected.length && timingSafeEqual(actual, expected);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Async counterpart of {@link verifyPassword} — the login route uses THIS so a
+ * flood of login attempts can't monopolize the event loop with synchronous
+ * scrypt work (audit #7). Same false-never-throws contract.
+ */
+export async function verifyPasswordAsync(password: string, encoded: string): Promise<boolean> {
+  const parts = encoded.split("$");
+  if (parts.length !== 6 || parts[0] !== "scrypt") return false;
+  const [, nStr, rStr, pStr, saltHex, hashHex] = parts;
+  const n = Number(nStr);
+  const r = Number(rStr);
+  const p = Number(pStr);
+  if (!Number.isInteger(n) || !Number.isInteger(r) || !Number.isInteger(p)) return false;
+
+  try {
+    const expected = Buffer.from(hashHex, "hex");
+    if (expected.length === 0) return false;
+    const actual = await scryptAsync(password, Buffer.from(saltHex, "hex"), expected.length, { N: n, r, p });
     return actual.length === expected.length && timingSafeEqual(actual, expected);
   } catch {
     return false;

@@ -17,7 +17,10 @@ into the image.
 | `ANTHROPIC_MODEL` | no | Defaults to `claude-opus-5`. |
 | `SLEEPBOT_KTC_MODE` | no | `sf` (default) or `oqb` for 1‑QB leagues. |
 | `HOST` / `PORT` | no | Default `0.0.0.0` / `8787` in the image. |
-| `DATABASE_SSL` | no | `true`/`false` to force TLS on/off (default: on for remote hosts, off for localhost). |
+| `DATABASE_SSL` | no | `true`/`false` to force TLS on/off (default: on for remote hosts, off for localhost). When on, the server certificate is **verified** by default. |
+| `DATABASE_CA` | no | A CA certificate to pin (inline PEM, or a path to a `.pem`) — use it when your provider uses a private CA. |
+| `DATABASE_SSL_NO_VERIFY` | no | `true` keeps TLS on but **skips** certificate verification. Insecure (endpoint-impersonation exposed); a last resort — prefer `DATABASE_CA`. |
+| `SLEEPBOT_RULES_JSON` | **for cloud guardrails** | Your write guardrails as inline JSON (shape of `config/rules.example.json`). Without this (and without a mounted `config/rules.json`), the container runs with **no** protect/warn rules — and a per-league `auto` agent would then send writes unguarded. |
 | `TELEGRAM_BOT_TOKEN` | for agent | Bot token from @BotFather. Enables autonomous alerts + approve/deny/override. |
 | `TELEGRAM_CHAT_ID` | for agent | Your chat id (from @userinfobot). Only taps from this chat are honored. |
 | `SLEEPBOT_AGENT_INTERVAL_MIN` | no | Minutes between autonomous sweeps (default 360). |
@@ -33,6 +36,21 @@ into the image.
 > localhost; set `SLEEPBOT_REQUIRE_AUTH=true` in production so a forgotten secret
 > can't leave the API open.
 | `SLEEPBOT_SECRET_KEY` | for UI secrets | 32-byte key (`npm run gen-secret-key`) that encrypts the Sleeper token when you set it from the Settings panel. Unset ⇒ that field is read-only and `SLEEPER_TOKEN` (env) is used. |
+
+> **Guardrails travel separately from leagues.** Your protect/warn rules live in
+> `config/rules.json`, which is **not** shipped in the image (it's git/docker-ignored,
+> like `config/leagues.json`). In the cloud, seed them with `SLEEPBOT_RULES_JSON`
+> (or mount a rules file) — otherwise the service starts with an empty rule set.
+> The loader **fails closed**: an explicitly-configured rules path that can't be
+> read (missing, a directory, bad permissions, invalid JSON) aborts startup rather
+> than silently dropping your protections. This matters most with a per-league
+> `auto` agent, which would otherwise send writes with no guardrails.
+>
+> **Login is rate-limited.** `POST /api/login` caps attempts per client and bounds
+> concurrent password hashing, so the one unauthenticated route can't be turned
+> into a CPU sink. Behind a proxy (Cloud Run terminates TLS upstream), the per-IP
+> key is only as granular as the address the app sees; the global concurrency cap
+> protects the process regardless.
 
 The **autonomous manager** runs only for leagues with an `agent` block in their
 config *and* when `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` + `ANTHROPIC_API_KEY`
@@ -114,6 +132,8 @@ by the **login gate** — set `SLEEPBOT_AUTH_USER` / `SLEEPBOT_AUTH_PASSWORD_HAS
 #    comma-escaping in --set-env-vars, and DATABASE_URL from Cloud SQL/Neon):
 printf '%s' "$ANTHROPIC_API_KEY" | gcloud secrets create anthropic-key --data-file=-
 # ...repeat for sleeper-token, tg-bot-token, database-url, internal-secret, config-json
+# Guardrails seed (protect/warn rules) — avoids comma-escaping, like config-json:
+printf '%s' "$(cat config/rules.json)" | gcloud secrets create rules-json --data-file=-
 # Login gate: hash the password locally, then store the hash + JWT secret.
 # NOTE: use `npm run --silent` when piping — a bare `npm run` prepends its own
 # banner lines to the pipe, which would corrupt the stored value.
@@ -125,7 +145,7 @@ openssl rand -hex 32 | tr -d '\n' | gcloud secrets create secret-key --data-file
 
 # 2. First deploy (URL is only known after this):
 gcloud run deploy sleepbot --source . --region us-central1 --allow-unauthenticated \
-  --set-secrets ANTHROPIC_API_KEY=anthropic-key:latest,TELEGRAM_BOT_TOKEN=tg-bot-token:latest,DATABASE_URL=database-url:latest,SLEEPBOT_INTERNAL_SECRET=internal-secret:latest,SLEEPBOT_CONFIG_JSON=config-json:latest,SLEEPBOT_AUTH_PASSWORD_HASH=auth-hash:latest,SLEEPBOT_JWT_SECRET=jwt-secret:latest,SLEEPBOT_SECRET_KEY=secret-key:latest \
+  --set-secrets ANTHROPIC_API_KEY=anthropic-key:latest,TELEGRAM_BOT_TOKEN=tg-bot-token:latest,DATABASE_URL=database-url:latest,SLEEPBOT_INTERNAL_SECRET=internal-secret:latest,SLEEPBOT_CONFIG_JSON=config-json:latest,SLEEPBOT_RULES_JSON=rules-json:latest,SLEEPBOT_AUTH_PASSWORD_HASH=auth-hash:latest,SLEEPBOT_JWT_SECRET=jwt-secret:latest,SLEEPBOT_SECRET_KEY=secret-key:latest \
   --set-env-vars TELEGRAM_CHAT_ID=123456789,SLEEPBOT_KTC_MODE=oqb,SLEEPBOT_AUTH_USER=sam
 
 # 3. Re-deploy with the now-known URL so the agent registers its webhook:

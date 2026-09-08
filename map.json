@@ -793,10 +793,18 @@
         {
           "name": "PostgresStore",
           "kind": "class",
-          "signature": "export_statement:export class PostgresStore implements Store { private readonly pool: pg.Pool; private constructor( connectionString: string, private readonly table = \"sleepbot_kv\", ) { const local = /@(localhost|127\\.0\\.0\\.1)[:/]/.test(connectionString); this.pool = new pg.Pool({ connectionString: withoutSslMode(connectionString), // Managed Postgres (Neon/Supabase/Fly/Render) generally needs TLS with a // provider cert; local dev does not. Override with DATABASE_SSL. ssl: process.env.DATABASE_SSL === \"true\" ? { rejectUnauthorized: false } : process.env.DATABASE_SSL === \"false\" || local ? false : { rejectUnauthorized: false }, }); } /** Construct and ensure the table exists before first use. */ static async create(connectionString: string, table?: string): Promise<PostgresStore> { const store = new PostgresStore(connectionString, table); await store.pool.query( `CREATE TABLE IF NOT EXISTS ${store.table} ( collection text NOT NULL, id text NOT NULL, value jsonb NOT NULL, updated_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY (collection, id) )`, ); return store; } async put(collection: string, id: string, value: unknown): Promise<void> { await this.pool.query( `INSERT INTO ${this.table} (collection, id, value, updated_at) VALUES ($1, $2, $3::jsonb, now()) ON CONFLICT (collection, id) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`, [collection, id, JSON.stringify(value)], ); } async get<T = unknown>(collection: string, id: string): Promise<T | null> { const r = await this.pool.query(`SELECT value FROM ${this.table} WHERE collection = $1 AND id = $2`, [ collection, id, ]); return r.rows[0] ? (r.rows[0].value as T) : null; } async list<T = unknown>(collection: string): Promise<T[]> { const r = await this.pool.query(`SELECT value FROM ${this.table} WHERE collection = $1`, [collection]); return r.rows.map((row) => row.value as T); } async delete(collection: string, id: string): Promise<void> { await this.pool.query(`DELETE FROM ${this.table} WHERE collection = $1 AND id = $2`, [collection, id]); } /** Close the pool (tests / graceful shutdown). */ close(): Promise<void> { return this.pool.end(); } }",
+          "signature": "export_statement:export class PostgresStore implements Store { private readonly pool: pg.Pool; private constructor( connectionString: string, private readonly table = \"sleepbot_kv\", ) { this.pool = new pg.Pool({ connectionString: withoutSslMode(connectionString), // Managed Postgres (Neon/Supabase/Fly/Render) needs TLS with a provider // cert; local dev does not. TLS verifies the server cert by default — see // resolvePgSsl (DATABASE_SSL / DATABASE_CA / DATABASE_SSL_NO_VERIFY). ssl: resolvePgSsl(connectionString), }); } /** Construct and ensure the table exists before first use. */ static async create(connectionString: string, table?: string): Promise<PostgresStore> { const store = new PostgresStore(connectionString, table); await store.pool.query( `CREATE TABLE IF NOT EXISTS ${store.table} ( collection text NOT NULL, id text NOT NULL, value jsonb NOT NULL, updated_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY (collection, id) )`, ); return store; } async put(collection: string, id: string, value: unknown): Promise<void> { await this.pool.query( `INSERT INTO ${this.table} (collection, id, value, updated_at) VALUES ($1, $2, $3::jsonb, now()) ON CONFLICT (collection, id) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`, [collection, id, JSON.stringify(value)], ); } async get<T = unknown>(collection: string, id: string): Promise<T | null> { const r = await this.pool.query(`SELECT value FROM ${this.table} WHERE collection = $1 AND id = $2`, [ collection, id, ]); return r.rows[0] ? (r.rows[0].value as T) : null; } async list<T = unknown>(collection: string): Promise<T[]> { const r = await this.pool.query(`SELECT value FROM ${this.table} WHERE collection = $1`, [collection]); return r.rows.map((row) => row.value as T); } async delete(collection: string, id: string): Promise<void> { await this.pool.query(`DELETE FROM ${this.table} WHERE collection = $1 AND id = $2`, [collection, id]); } /** Close the pool (tests / graceful shutdown). */ close(): Promise<void> { return this.pool.end(); } }",
           "file": "src/audit/postgresStore.ts",
-          "line": 31,
-          "end_line": 97
+          "line": 72,
+          "end_line": 133
+        },
+        {
+          "name": "resolvePgSsl",
+          "kind": "function",
+          "signature": "export_statement:export function resolvePgSsl(connectionString: string, env: NodeJS.ProcessEnv = process.env): PgSsl { const local = /@(localhost|127\\.0\\.0\\.1)[:/]/.test(connectionString); const flag = env.DATABASE_SSL; const off = flag === \"false\" || (flag !== \"true\" && local); if (off) return false; const ca = readDatabaseCa(env); if (env.DATABASE_SSL_NO_VERIFY === \"true\") { console.error( \"[db] DATABASE_SSL_NO_VERIFY=true — TLS is on but the server certificate is NOT verified. \" + \"The connection is encrypted but exposed to endpoint impersonation; prefer DATABASE_CA.\", ); return ca ? { rejectUnauthorized: false, ca } : { rejectUnauthorized: false }; } return ca ? { rejectUnauthorized: true, ca } : { rejectUnauthorized: true }; }",
+          "file": "src/audit/postgresStore.ts",
+          "line": 28,
+          "end_line": 43
         },
         {
           "name": "AuditEvent",
@@ -829,6 +837,14 @@
           "file": "src/audit/auditLog.ts",
           "line": 5,
           "end_line": 5
+        },
+        {
+          "name": "PgSsl",
+          "kind": "type",
+          "signature": "export_statement:export type PgSsl = false | { rejectUnauthorized: boolean; ca?: string };",
+          "file": "src/audit/postgresStore.ts",
+          "line": 6,
+          "end_line": 6
         },
         {
           "name": "export {\n  AuditLog,\n  type AuditEvent,\n  type AuditEventType,\n  type AuditActor,\n} from \"./auditLog.js\";",
@@ -1382,6 +1398,8 @@
         "src/gate/gate.test.ts",
         "src/gate/hashPassword.ts",
         "src/gate/index.ts",
+        "src/gate/loginGuard.test.ts",
+        "src/gate/loginGuard.ts",
         "src/gate/registerAuth.ts"
       ],
       "contracts": [],
@@ -1389,26 +1407,42 @@
         {
           "name": "registerAuth",
           "kind": "function",
-          "signature": "export_statement:export async function registerAuth(app: FastifyInstance): Promise<GateConfig> { const gate = loadGateConfig(); const requireAuth = /^(1|true|yes|on)$/i.test(process.env.SLEEPBOT_REQUIRE_AUTH ?? \"\"); // Fail CLOSED on misconfiguration: a half-set gate must not silently run open // (a forgotten prod secret used to leave the whole API unauthenticated). if (gate.partial) { throw new Error( \"[gate] auth is partially configured — set ALL of SLEEPBOT_AUTH_USER, \" + \"SLEEPBOT_AUTH_PASSWORD_HASH, and SLEEPBOT_JWT_SECRET (or none). Refusing to start with a half-set gate.\", ); } if (!gate.enabled) { if (requireAuth) { throw new Error(\"[gate] SLEEPBOT_REQUIRE_AUTH is set but the login gate is not configured — refusing to start without auth.\"); } console.error(\"[gate] auth disabled (no SLEEPBOT_AUTH_* set) — the HTTP API is open. Fine for localhost; set all three (or SLEEPBOT_REQUIRE_AUTH) before any public deploy.\"); return gate; } // Validate the credential material before we start trusting it. if (gate.secret.length < 16) { throw new Error(\"[gate] SLEEPBOT_JWT_SECRET is too short (need at least 16 chars; use `openssl rand -hex 32`).\"); } if (!isScryptHash(gate.passwordHash)) { throw new Error(\"[gate] SLEEPBOT_AUTH_PASSWORD_HASH is not a valid scrypt hash — run `npm run hash-password`.\"); } await app.register(fastifyJwt, { secret: gate.secret }); app.post(\"/api/login\", async (req: FastifyRequest, reply: FastifyReply) => { const body = (req.body ?? {}) as { username?: unknown; password?: unknown }; const username = typeof body.username === \"string\" ? body.username : \"\"; const password = typeof body.password === \"string\" ? body.password : \"\"; // Verify the password even when the username is wrong so response time // doesn't reveal whether the username exists. const userOk = safeEqual(username, gate.username); const passOk = verifyPassword(password, gate.passwordHash); if (!userOk || !passOk) { return reply.status(401).send({ error: \"invalid username or password\" }); } const token = app.jwt.sign({ sub: gate.username }, { expiresIn: gate.ttl }); return { token, username: gate.username }; }); app.addHook(\"onRequest\", async (req: FastifyRequest, reply: FastifyReply) => { if (isPublic(req)) return; try { await req.jwtVerify(); } catch { // `code: \"auth_required\"` lets the browser distinguish a login timeout // from a Sleeper-token reauth (which also returns 401 but keeps the session). return reply.status(401).send({ error: \"authentication required\", code: \"auth_required\" }); } }); console.error(`[gate] auth enabled for user \"${gate.username}\" (token TTL ${gate.ttl}).`); return gate; }",
+          "signature": "export_statement:export async function registerAuth(app: FastifyInstance): Promise<GateConfig> { const gate = loadGateConfig(); const requireAuth = /^(1|true|yes|on)$/i.test(process.env.SLEEPBOT_REQUIRE_AUTH ?? \"\"); // Fail CLOSED on misconfiguration: a half-set gate must not silently run open // (a forgotten prod secret used to leave the whole API unauthenticated). if (gate.partial) { throw new Error( \"[gate] auth is partially configured — set ALL of SLEEPBOT_AUTH_USER, \" + \"SLEEPBOT_AUTH_PASSWORD_HASH, and SLEEPBOT_JWT_SECRET (or none). Refusing to start with a half-set gate.\", ); } if (!gate.enabled) { if (requireAuth) { throw new Error(\"[gate] SLEEPBOT_REQUIRE_AUTH is set but the login gate is not configured — refusing to start without auth.\"); } console.error(\"[gate] auth disabled (no SLEEPBOT_AUTH_* set) — the HTTP API is open. Fine for localhost; set all three (or SLEEPBOT_REQUIRE_AUTH) before any public deploy.\"); return gate; } // Validate the credential material before we start trusting it. if (gate.secret.length < 16) { throw new Error(\"[gate] SLEEPBOT_JWT_SECRET is too short (need at least 16 chars; use `openssl rand -hex 32`).\"); } if (!isScryptHash(gate.passwordHash)) { throw new Error(\"[gate] SLEEPBOT_AUTH_PASSWORD_HASH is not a valid scrypt hash — run `npm run hash-password`.\"); } await app.register(fastifyJwt, { secret: gate.secret }); // Resource controls for the unauthenticated login route (audit #7): a small // request body, a per-IP attempt limiter, and a global cap on concurrent // scrypt verifications. const guard = new LoginGuard(); app.post( \"/api/login\", { bodyLimit: 4096 }, async (req: FastifyRequest, reply: FastifyReply) => { if (!guard.allow(req.ip)) { return reply.status(429).send({ error: \"too many login attempts — slow down\", code: \"rate_limited\" }); } const body = (req.body ?? {}) as { username?: unknown; password?: unknown }; const username = typeof body.username === \"string\" ? body.username : \"\"; const password = typeof body.password === \"string\" ? body.password : \"\"; // Over-length fields are never valid credentials; reject before hashing. if (username.length > MAX_CREDENTIAL_FIELD || password.length > MAX_CREDENTIAL_FIELD) { return reply.status(401).send({ error: \"invalid username or password\" }); } // Shed load rather than queue unbounded hashing when saturated. if (!guard.tryAcquire()) { return reply.status(429).send({ error: \"login is busy — retry shortly\", code: \"login_busy\" }); } try { // Verify the password even when the username is wrong so response time // doesn't reveal whether the username exists. const userOk = safeEqual(username, gate.username); const passOk = await verifyPasswordAsync(password, gate.passwordHash); if (!userOk || !passOk) { return reply.status(401).send({ error: \"invalid username or password\" }); } const token = app.jwt.sign({ sub: gate.username }, { expiresIn: gate.ttl }); return { token, username: gate.username }; } finally { guard.release(); } }, ); app.addHook(\"onRequest\", async (req: FastifyRequest, reply: FastifyReply) => { if (isPublic(req)) return; try { await req.jwtVerify(); } catch { // `code: \"auth_required\"` lets the browser distinguish a login timeout // from a Sleeper-token reauth (which also returns 401 but keeps the session). return reply.status(401).send({ error: \"authentication required\", code: \"auth_required\" }); } }); console.error(`[gate] auth enabled for user \"${gate.username}\" (token TTL ${gate.ttl}).`); return gate; }",
           "file": "src/gate/registerAuth.ts",
-          "line": 20,
+          "line": 24,
+          "end_line": 107
+        },
+        {
+          "name": "verifyPasswordAsync",
+          "kind": "function",
+          "signature": "export_statement:export async function verifyPasswordAsync(password: string, encoded: string): Promise<boolean> { const parts = encoded.split(\"$\"); if (parts.length !== 6 || parts[0] !== \"scrypt\") return false; const [, nStr, rStr, pStr, saltHex, hashHex] = parts; const n = Number(nStr); const r = Number(rStr); const p = Number(pStr); if (!Number.isInteger(n) || !Number.isInteger(r) || !Number.isInteger(p)) return false; try { const expected = Buffer.from(hashHex, \"hex\"); if (expected.length === 0) return false; const actual = await scryptAsync(password, Buffer.from(saltHex, \"hex\"), expected.length, { N: n, r, p }); return actual.length === expected.length && timingSafeEqual(actual, expected); } catch { return false; } }",
+          "file": "src/gate/credentials.ts",
+          "line": 63,
           "end_line": 80
+        },
+        {
+          "name": "LoginGuard",
+          "kind": "class",
+          "signature": "export_statement:export class LoginGuard { private readonly hits = new Map<string, { count: number; resetAt: number }>(); private inFlight = 0; constructor(private readonly opts: LoginGuardOptions = {}) {} private get windowMs(): number { return this.opts.windowMs ?? 60_000; } private get maxPerWindow(): number { return this.opts.maxPerWindow ?? 10; } private get maxConcurrent(): number { return this.opts.maxConcurrent ?? 4; } private now(): number { return (this.opts.now ?? Date.now)(); } /** * Record an attempt from `key` (e.g. the client IP). Returns false once the * window budget is exhausted; the window resets `windowMs` after the first * attempt in it. */ allow(key: string): boolean { const t = this.now(); // Opportunistically drop stale buckets so the map can't grow without bound // under a spray of distinct keys. if (this.hits.size > 10_000) this.sweep(t); const rec = this.hits.get(key); if (!rec || t >= rec.resetAt) { this.hits.set(key, { count: 1, resetAt: t + this.windowMs }); return true; } if (rec.count >= this.maxPerWindow) return false; rec.count++; return true; } /** * Reserve a verification slot. Returns false when `maxConcurrent` hashes are * already running — the caller should shed load (429) rather than queue * unbounded work. On true, the caller MUST call {@link release} in a finally. */ tryAcquire(): boolean { if (this.inFlight >= this.maxConcurrent) return false; this.inFlight++; return true; } release(): void { if (this.inFlight > 0) this.inFlight--; } private sweep(t: number): void { for (const [k, rec] of this.hits) if (t >= rec.resetAt) this.hits.delete(k); } }",
+          "file": "src/gate/loginGuard.ts",
+          "line": 23,
+          "end_line": 81
         },
         {
           "name": "hashPassword",
           "kind": "function",
           "signature": "export_statement:export function hashPassword(password: string): string { const salt = randomBytes(16); const hash = scryptSync(password, salt, KEYLEN, { N, r: R, p: P }); return `scrypt$${N}$${R}$${P}$${salt.toString(\"hex\")}$${hash.toString(\"hex\")}`; }",
           "file": "src/gate/credentials.ts",
-          "line": 19,
-          "end_line": 23
+          "line": 27,
+          "end_line": 31
         },
         {
           "name": "isScryptHash",
           "kind": "function",
           "signature": "export_statement:export function isScryptHash(encoded: string): boolean { const parts = encoded.split(\"$\"); if (parts.length !== 6 || parts[0] !== \"scrypt\") return false; const [, n, r, p, salt, hash] = parts; return [n, r, p].every((x) => Number.isInteger(Number(x)) && Number(x) > 0) && !!salt && !!hash; }",
           "file": "src/gate/credentials.ts",
-          "line": 51,
-          "end_line": 56
+          "line": 83,
+          "end_line": 88
         },
         {
           "name": "loadGateConfig",
@@ -1423,16 +1457,16 @@
           "kind": "function",
           "signature": "export_statement:export function safeEqual(a: string, b: string): boolean { const ab = Buffer.from(a); const bb = Buffer.from(b); if (ab.length !== bb.length) return false; return timingSafeEqual(ab, bb); }",
           "file": "src/gate/credentials.ts",
-          "line": 59,
-          "end_line": 64
+          "line": 91,
+          "end_line": 96
         },
         {
           "name": "verifyPassword",
           "kind": "function",
           "signature": "export_statement:export function verifyPassword(password: string, encoded: string): boolean { const parts = encoded.split(\"$\"); if (parts.length !== 6 || parts[0] !== \"scrypt\") return false; const [, nStr, rStr, pStr, saltHex, hashHex] = parts; const n = Number(nStr); const r = Number(rStr); const p = Number(pStr); if (!Number.isInteger(n) || !Number.isInteger(r) || !Number.isInteger(p)) return false; let expected: Buffer; try { expected = Buffer.from(hashHex, \"hex\"); if (expected.length === 0) return false; const actual = scryptSync(password, Buffer.from(saltHex, \"hex\"), expected.length, { N: n, r, p }); return actual.length === expected.length && timingSafeEqual(actual, expected); } catch { return false; } }",
           "file": "src/gate/credentials.ts",
-          "line": 30,
-          "end_line": 48
+          "line": 38,
+          "end_line": 56
         },
         {
           "name": "GateConfig",
@@ -1441,6 +1475,14 @@
           "file": "src/gate/config.ts",
           "line": 9,
           "end_line": 18
+        },
+        {
+          "name": "LoginGuardOptions",
+          "kind": "interface",
+          "signature": "export_statement:export interface LoginGuardOptions { windowMs?: number; maxPerWindow?: number; maxConcurrent?: number; /** Injectable clock for tests. */ now?: () => number; }",
+          "file": "src/gate/loginGuard.ts",
+          "line": 15,
+          "end_line": 21
         },
         {
           "name": "export { hashPassword, verifyPassword, safeEqual } from \"./credentials.js\";",
@@ -2248,6 +2290,7 @@
       "files": [
         "src/rules/engine.ts",
         "src/rules/index.ts",
+        "src/rules/loadRulesConfig.test.ts",
         "src/rules/rules.test.ts",
         "src/rules/schema.ts"
       ],
@@ -2256,10 +2299,10 @@
         {
           "name": "loadRulesConfig",
           "kind": "function",
-          "signature": "export_statement:export async function loadRulesConfig(path?: string): Promise<RulesConfig> { const target = path ?? process.env.SLEEPBOT_RULES ?? \"config/rules.json\"; let raw: string; try { raw = await readFile(target, \"utf8\"); } catch { return rulesConfigSchema.parse({}); // defaults } const parsed = rulesConfigSchema.safeParse(JSON.parse(raw)); if (!parsed.success) { const issues = parsed.error.issues.map((i) => ` - ${i.path.join(\".\")}: ${i.message}`).join(\"\\n\"); throw new Error(`invalid rules config at ${target}:\\n${issues}`); } return parsed.data; }",
+          "signature": "export_statement:export async function loadRulesConfig(path?: string): Promise<RulesConfig> { const inline = process.env.SLEEPBOT_RULES_JSON; if (inline?.trim()) return parseRulesConfig(inline, \"SLEEPBOT_RULES_JSON\"); const explicit = path ?? process.env.SLEEPBOT_RULES; const target = explicit ?? \"config/rules.json\"; let raw: string; try { raw = await readFile(target, \"utf8\"); } catch (err) { const code = (err as NodeJS.ErrnoException).code; if (!explicit && code === \"ENOENT\") return rulesConfigSchema.parse({}); // no default file → safe defaults throw new Error( `could not read rules config at ${target} (${code ?? (err as Error).message}) — ` + (explicit ? \"this path was set explicitly via SLEEPBOT_RULES. \" : \"the default rules file exists but is unreadable. \") + \"Refusing to start with write guardrails silently disabled; fix the path or set SLEEPBOT_RULES_JSON.\", ); } return parseRulesConfig(raw, target); }",
           "file": "src/rules/schema.ts",
-          "line": 47,
-          "end_line": 61
+          "line": 56,
+          "end_line": 77
         },
         {
           "name": "RulesEngine",

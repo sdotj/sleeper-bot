@@ -1,7 +1,11 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import fastifyJwt from "@fastify/jwt";
 import { loadGateConfig, type GateConfig } from "./config.js";
-import { isScryptHash, safeEqual, verifyPassword } from "./credentials.js";
+import { isScryptHash, safeEqual, verifyPasswordAsync } from "./credentials.js";
+import { LoginGuard } from "./loginGuard.js";
+
+/** Reject absurd field lengths before spending any hashing work on them. */
+const MAX_CREDENTIAL_FIELD = 256;
 
 /**
  * Login gate for the HTTP API (dec.api-auth-gate). When credentials + a JWT
@@ -47,22 +51,45 @@ export async function registerAuth(app: FastifyInstance): Promise<GateConfig> {
 
   await app.register(fastifyJwt, { secret: gate.secret });
 
-  app.post("/api/login", async (req: FastifyRequest, reply: FastifyReply) => {
-    const body = (req.body ?? {}) as { username?: unknown; password?: unknown };
-    const username = typeof body.username === "string" ? body.username : "";
-    const password = typeof body.password === "string" ? body.password : "";
+  // Resource controls for the unauthenticated login route (audit #7): a small
+  // request body, a per-IP attempt limiter, and a global cap on concurrent
+  // scrypt verifications.
+  const guard = new LoginGuard();
+  app.post(
+    "/api/login",
+    { bodyLimit: 4096 },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      if (!guard.allow(req.ip)) {
+        return reply.status(429).send({ error: "too many login attempts — slow down", code: "rate_limited" });
+      }
 
-    // Verify the password even when the username is wrong so response time
-    // doesn't reveal whether the username exists.
-    const userOk = safeEqual(username, gate.username);
-    const passOk = verifyPassword(password, gate.passwordHash);
-    if (!userOk || !passOk) {
-      return reply.status(401).send({ error: "invalid username or password" });
-    }
+      const body = (req.body ?? {}) as { username?: unknown; password?: unknown };
+      const username = typeof body.username === "string" ? body.username : "";
+      const password = typeof body.password === "string" ? body.password : "";
+      // Over-length fields are never valid credentials; reject before hashing.
+      if (username.length > MAX_CREDENTIAL_FIELD || password.length > MAX_CREDENTIAL_FIELD) {
+        return reply.status(401).send({ error: "invalid username or password" });
+      }
 
-    const token = app.jwt.sign({ sub: gate.username }, { expiresIn: gate.ttl });
-    return { token, username: gate.username };
-  });
+      // Shed load rather than queue unbounded hashing when saturated.
+      if (!guard.tryAcquire()) {
+        return reply.status(429).send({ error: "login is busy — retry shortly", code: "login_busy" });
+      }
+      try {
+        // Verify the password even when the username is wrong so response time
+        // doesn't reveal whether the username exists.
+        const userOk = safeEqual(username, gate.username);
+        const passOk = await verifyPasswordAsync(password, gate.passwordHash);
+        if (!userOk || !passOk) {
+          return reply.status(401).send({ error: "invalid username or password" });
+        }
+        const token = app.jwt.sign({ sub: gate.username }, { expiresIn: gate.ttl });
+        return { token, username: gate.username };
+      } finally {
+        guard.release();
+      }
+    },
+  );
 
   app.addHook("onRequest", async (req: FastifyRequest, reply: FastifyReply) => {
     if (isPublic(req)) return;

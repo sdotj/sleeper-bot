@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import Fastify, { type FastifyInstance } from "fastify";
-import { hashPassword, verifyPassword, safeEqual } from "./credentials.js";
+import { hashPassword, verifyPassword, verifyPasswordAsync, safeEqual } from "./credentials.js";
 import { loadGateConfig } from "./config.js";
 import { registerAuth } from "./registerAuth.js";
 
@@ -24,6 +24,13 @@ describe("credentials", () => {
     expect(verifyPassword("x", "")).toBe(false);
     expect(verifyPassword("x", "not-a-hash")).toBe(false);
     expect(verifyPassword("x", "scrypt$16384$8$1$zz$zz")).toBe(false);
+  });
+
+  it("verifyPasswordAsync matches the sync check without blocking (audit #7)", async () => {
+    const encoded = hashPassword("hunter2");
+    expect(await verifyPasswordAsync("hunter2", encoded)).toBe(true);
+    expect(await verifyPasswordAsync("wrong", encoded)).toBe(false);
+    expect(await verifyPasswordAsync("x", "not-a-hash")).toBe(false);
   });
 
   it("safeEqual compares in constant form", () => {
@@ -143,6 +150,20 @@ describe("registerAuth (integration)", () => {
     delete process.env.SLEEPBOT_JWT_SECRET;
     process.env.SLEEPBOT_REQUIRE_AUTH = "true";
     await expect(build()).rejects.toThrow(/refusing to start without auth/i);
+  });
+
+  it("rate-limits repeated login attempts (audit #7)", async () => {
+    app = await build();
+    // The default guard allows 10 attempts per window; the 11th is throttled.
+    let last = 200;
+    for (let i = 0; i < 10; i++) {
+      const r = await app.inject({ method: "POST", url: "/api/login", payload: { username: "sam", password: "nope" } });
+      last = r.statusCode;
+    }
+    expect(last).toBe(401); // the 10 allowed attempts are just wrong-password
+    const throttled = await app.inject({ method: "POST", url: "/api/login", payload: { username: "sam", password: "nope" } });
+    expect(throttled.statusCode).toBe(429);
+    expect(throttled.json().code).toBe("rate_limited");
   });
 
   it("is a no-op (API open) when auth is not configured", async () => {

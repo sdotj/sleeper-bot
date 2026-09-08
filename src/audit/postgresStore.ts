@@ -1,5 +1,46 @@
+import { readFileSync } from "node:fs";
 import pg from "pg";
 import type { Store } from "./store.js";
+
+/** TLS `ssl` value for the pg pool: false (off) or a Node TLS options object. */
+export type PgSsl = false | { rejectUnauthorized: boolean; ca?: string };
+
+/** Read a pinned CA from DATABASE_CA — inline PEM, or a path to a PEM file. */
+function readDatabaseCa(env: NodeJS.ProcessEnv): string | undefined {
+  const v = env.DATABASE_CA?.trim();
+  if (!v) return undefined;
+  if (v.startsWith("-----BEGIN")) return v;
+  try {
+    return readFileSync(v, "utf8");
+  } catch (err) {
+    throw new Error(`DATABASE_CA points to a file that could not be read: ${(err as Error).message}`);
+  }
+}
+
+/**
+ * Decide the TLS posture for a Postgres connection (audit #6). TLS is on for
+ * remote hosts (off for localhost); `DATABASE_SSL=true|false` forces it either
+ * way. When on, the server certificate is VERIFIED by default — the previous
+ * `rejectUnauthorized: false` encrypted the link but let any endpoint
+ * impersonate the database. `DATABASE_CA` pins a provider CA; the escape hatch
+ * `DATABASE_SSL_NO_VERIFY=true` disables verification but says so loudly.
+ */
+export function resolvePgSsl(connectionString: string, env: NodeJS.ProcessEnv = process.env): PgSsl {
+  const local = /@(localhost|127\.0\.0\.1)[:/]/.test(connectionString);
+  const flag = env.DATABASE_SSL;
+  const off = flag === "false" || (flag !== "true" && local);
+  if (off) return false;
+
+  const ca = readDatabaseCa(env);
+  if (env.DATABASE_SSL_NO_VERIFY === "true") {
+    console.error(
+      "[db] DATABASE_SSL_NO_VERIFY=true — TLS is on but the server certificate is NOT verified. " +
+        "The connection is encrypted but exposed to endpoint impersonation; prefer DATABASE_CA.",
+    );
+    return ca ? { rejectUnauthorized: false, ca } : { rejectUnauthorized: false };
+  }
+  return ca ? { rejectUnauthorized: true, ca } : { rejectUnauthorized: true };
+}
 
 /**
  * Drop any `sslmode` query param from a Postgres DSN. We always set TLS via the
@@ -35,17 +76,12 @@ export class PostgresStore implements Store {
     connectionString: string,
     private readonly table = "sleepbot_kv",
   ) {
-    const local = /@(localhost|127\.0\.0\.1)[:/]/.test(connectionString);
     this.pool = new pg.Pool({
       connectionString: withoutSslMode(connectionString),
-      // Managed Postgres (Neon/Supabase/Fly/Render) generally needs TLS with a
-      // provider cert; local dev does not. Override with DATABASE_SSL.
-      ssl:
-        process.env.DATABASE_SSL === "true"
-          ? { rejectUnauthorized: false }
-          : process.env.DATABASE_SSL === "false" || local
-            ? false
-            : { rejectUnauthorized: false },
+      // Managed Postgres (Neon/Supabase/Fly/Render) needs TLS with a provider
+      // cert; local dev does not. TLS verifies the server cert by default — see
+      // resolvePgSsl (DATABASE_SSL / DATABASE_CA / DATABASE_SSL_NO_VERIFY).
+      ssl: resolvePgSsl(connectionString),
     });
   }
 
