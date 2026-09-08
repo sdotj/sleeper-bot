@@ -12,6 +12,7 @@ import type { ValueProvider } from "../value/ValueProvider.js";
 import { RulesEngine, type ActionKind, type RuleContext, type RuleVerdict } from "../rules/index.js";
 import type { ProposedAction } from "./ProposedAction.js";
 import type { PendingStore } from "./pendingStore.js";
+import { validateWritePayload } from "./writeSchemas.js";
 
 export interface PipelineDeps {
   rules: RulesEngine;
@@ -42,7 +43,11 @@ export class ActionPipeline {
 
   constructor(private readonly deps: PipelineDeps) {}
 
-  async propose(leagueId: string, kind: ActionKind, payload: WritePayload): Promise<ProposedAction> {
+  async propose(leagueId: string, kind: ActionKind, rawPayload: WritePayload): Promise<ProposedAction> {
+    // Validate the (cast, untrusted) payload at the domain boundary before it
+    // reaches rules or the platform — the single chokepoint for every transport
+    // (audit #10).
+    const payload = validateWritePayload(kind, rawPayload);
     const adapter = this.deps.adapterFor(leagueId);
     const verdict = await this.deps.rules.evaluate(
       kind,
@@ -180,10 +185,11 @@ export class ActionPipeline {
   async perform(
     leagueId: string,
     kind: ActionKind,
-    payload: WritePayload,
+    rawPayload: WritePayload,
     actor: "user" | "auto",
     opts: { override?: boolean } = {},
   ): Promise<ProposedAction> {
+    const payload = validateWritePayload(kind, rawPayload); // boundary validation (audit #10)
     const adapter = this.deps.adapterFor(leagueId);
     const verdict: RuleVerdict = opts.override
       ? { decision: "allow", blockedReasons: [], warnings: ["rule override"] }

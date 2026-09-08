@@ -111,6 +111,23 @@ describe("Notifier", () => {
     expect(perform).toHaveBeenCalledOnce();
   });
 
+  it("rejects an ovr: tap on an approve-mode proposal without performing (audit #11)", async () => {
+    const { notifier, store, perform, telegram } = makeNotifier();
+    await notifier.propose(notice(), "approve"); // stored mode = approve
+    await notifier.handleCallback("ovr:a1", "cq7"); // attacker/mismatched verb
+    expect(perform).not.toHaveBeenCalled();
+    expect(await store.get("agent_outbox", "a1")).toBeTruthy(); // left for the right button
+    expect(telegram.answerCallbackQuery).toHaveBeenCalledWith("cq7", expect.stringMatching(/doesn't match/));
+  });
+
+  it("rejects a callback with no message (can't be authorized to the chat) (audit #11)", async () => {
+    const { notifier, perform, telegram } = makeNotifier();
+    await notifier.propose(notice(), "approve");
+    await notifier.handleUpdate({ update_id: 9, callback_query: { id: "cq8", data: "ok:a1" } } as never);
+    expect(perform).not.toHaveBeenCalled();
+    expect(telegram.answerCallbackQuery).toHaveBeenCalledWith("cq8", expect.stringMatching(/Unauthorized/));
+  });
+
   it("pollOnce ignores callbacks from a different chat", async () => {
     const { notifier, telegram, store, perform } = makeNotifier();
     await notifier.propose(notice(), "approve");

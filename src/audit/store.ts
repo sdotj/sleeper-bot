@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 /**
@@ -36,19 +36,53 @@ export class JsonFileStore implements Store {
 
   private async load(): Promise<Snapshot> {
     if (this.data) return this.data;
+
+    let raw: string;
     try {
-      this.data = JSON.parse(await readFile(this.path, "utf8")) as Snapshot;
-    } catch {
-      this.data = {};
+      raw = await readFile(this.path, "utf8");
+    } catch (err) {
+      // Only a genuinely-absent file is a new store. Any other read failure
+      // (permissions, I/O) must NOT be mistaken for "empty" — that would let
+      // the next write overwrite real data (audit #12).
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        this.data = {};
+        return this.data;
+      }
+      throw new Error(`could not read store at ${this.path}: ${(err as Error).message}`);
     }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+      if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error("top-level value is not a JSON object");
+      }
+    } catch (err) {
+      // Corrupt on disk: preserve the damaged bytes and refuse to run rather
+      // than silently starting empty and clobbering them on the next write.
+      const backup = `${this.path}.corrupt-${Date.now()}`;
+      await writeFile(backup, raw).catch(() => {});
+      throw new Error(
+        `store at ${this.path} is corrupt (${(err as Error).message}) — preserved a copy at ${backup}. ` +
+          `Refusing to overwrite it with an empty store; inspect/restore it and restart.`,
+      );
+    }
+    this.data = parsed as Snapshot;
     return this.data;
   }
 
-  /** Serialize persistence so overlapping writes can't interleave. */
+  /**
+   * Serialize persistence so overlapping writes can't interleave. Writes go to a
+   * temp file and are atomically renamed into place, so a crash mid-write can't
+   * truncate the store. A prior write's rejection is swallowed at the chain link
+   * so one failure doesn't block every later write (audit #12).
+   */
   private persist(): Promise<void> {
-    this.writeChain = this.writeChain.then(async () => {
+    this.writeChain = this.writeChain.catch(() => {}).then(async () => {
       await mkdir(dirname(this.path), { recursive: true });
-      await writeFile(this.path, JSON.stringify(this.data ?? {}, null, 2));
+      const tmp = `${this.path}.tmp-${process.pid}`;
+      await writeFile(tmp, JSON.stringify(this.data ?? {}, null, 2));
+      await rename(tmp, this.path); // atomic on the same filesystem
     });
     return this.writeChain;
   }

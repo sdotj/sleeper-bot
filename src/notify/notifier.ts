@@ -113,6 +113,16 @@ export class Notifier {
       return;
     }
 
+    // The verb must match how this proposal was offered (audit #11): an
+    // `approve` proposal only accepts ok/no, an `override` proposal only
+    // accepts ovr/no. Reject a mismatched verb WITHOUT performing anything, so
+    // an `ovr:` tap can't override-execute a proposal that was never a block.
+    const expectedApproval = verb === "ovr" ? "override" : verb === "ok" ? "approve" : null;
+    if (expectedApproval && rec.mode !== expectedApproval) {
+      await this.deps.telegram.answerCallbackQuery(callbackQueryId, "That action doesn't match this proposal.");
+      return;
+    }
+
     let outcome: string;
     if (verb === "no") {
       outcome = "❌ Dismissed — nothing sent.";
@@ -146,7 +156,13 @@ export class Notifier {
   async handleUpdate(update: TelegramUpdate): Promise<void> {
     const cq = update.callback_query;
     if (!cq?.data) return;
-    if (cq.message && String(cq.message.chat.id) !== String(this.deps.chatId)) return;
+    // Require the callback to carry its originating message AND come from the
+    // configured chat. A callback without a message can't be authorized against
+    // the allowed chat, so it must not fall through and act (audit #11).
+    if (!cq.message || String(cq.message.chat.id) !== String(this.deps.chatId)) {
+      await this.deps.telegram.answerCallbackQuery(cq.id, "Unauthorized.").catch(() => {});
+      return;
+    }
     await this.handleCallback(cq.data, cq.id);
   }
 

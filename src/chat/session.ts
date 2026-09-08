@@ -65,10 +65,20 @@ export async function runPersistedTurn(
   }
 
   const now = Date.now();
-  convo.messages.push({ role: "user", content: message, at: now });
-  convo.messages.push({ role: "assistant", content: reply, at: now });
-  convo.updatedAt = now;
-  await history.save(convo);
+  const userTurn = { role: "user" as const, content: message, at: now };
+  const assistantTurn = { role: "assistant" as const, content: reply, at: now };
 
-  return { conversationId: convo.id, reply, toolCalls };
+  // Append to the FRESHEST stored copy, re-read right before the write, rather
+  // than to the snapshot we loaded before the (multi-second) model call. Two
+  // concurrent turns on the same thread would otherwise each save their own
+  // pre-call snapshot and lose the other's messages (audit #13). This narrows
+  // the window to the local read-modify-write; a fully lost-update-proof store
+  // needs append-only message rows or a compare-and-set put.
+  const target = existing ? ((await history.get(convo.id)) ?? convo) : convo;
+  target.messages.push(userTurn, assistantTurn);
+  target.updatedAt = now;
+  if (convo.title && !target.title) target.title = convo.title;
+  await history.save(target);
+
+  return { conversationId: target.id, reply, toolCalls };
 }

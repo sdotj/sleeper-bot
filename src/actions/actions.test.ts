@@ -130,6 +130,32 @@ describe("ActionPipeline (manual mode)", () => {
   });
 });
 
+describe("ActionPipeline boundary validation (audit #10)", () => {
+  it("rejects invalid write payloads before touching rules or the platform", async () => {
+    const { adapter, executeTrade } = fakeAdapter();
+    const { pipe, pending } = pipeline({ mode: "manual" }, adapter);
+
+    const cases: [string, unknown][] = [
+      ["self-trade", { ...trade, toRosterId: 1 }],
+      ["negative roster", { ...trade, fromRosterId: -1 }],
+      ["fractional roster", { ...trade, fromRosterId: 1.5 }],
+      ["numeric player id", { ...trade, sendPlayerIds: [123] }],
+      ["player on both sides", { fromRosterId: 1, toRosterId: 2, sendPlayerIds: ["p"], receivePlayerIds: ["p"] }],
+      ["empty trade", { fromRosterId: 1, toRosterId: 2, sendPlayerIds: [], receivePlayerIds: [] }],
+    ];
+    for (const [, bad] of cases) {
+      await expect(pipe.propose("L1", "trade", bad as never)).rejects.toThrow(/invalid trade payload/);
+    }
+    expect(executeTrade).not.toHaveBeenCalled();
+    expect(await pending.list("L1")).toHaveLength(0); // nothing stored
+
+    // A negative FAAB bid on a waiver is rejected too.
+    await expect(
+      pipe.propose("L1", "waiver_claim", { rosterId: 1, addPlayerId: "x", faabBid: -5 } as never),
+    ).rejects.toThrow(/invalid waiver_claim payload/);
+  });
+});
+
 describe("ActionPipeline (auto mode)", () => {
   it("executes an unblocked proposal immediately", async () => {
     const { adapter, executeTrade } = fakeAdapter();
