@@ -49,4 +49,16 @@ describe("KtcValueProvider", () => {
     await vp.getValues(["qb1"]);
     expect(calls).toBe(1);
   });
+
+  it("retries after a failed build instead of caching the rejection (audit #15)", async () => {
+    let calls = 0;
+    const vp = new KtcValueProvider(ktc, async () => {
+      calls++;
+      if (calls === 1) throw new Error("transient load failure");
+      return players;
+    });
+    await expect(vp.getValue("7564")).rejects.toThrow(/transient/);
+    expect(await vp.getValue("7564")).toBe(9968); // second attempt succeeds
+    expect(calls).toBe(2);
+  });
 });

@@ -50,12 +50,22 @@ export class SleeperRankValueProvider implements ValueProvider {
 
   private ensureIndex(): Promise<Map<string, number>> {
     if (this.index) return Promise.resolve(this.index);
-    this.building ??= this.loadPlayers().then((players) => {
-      const idx = new Map<string, number>();
-      for (const p of players) idx.set(p.playerId, this.valueForRank(p.searchRank, p.position));
-      this.index = idx;
-      return idx;
-    });
+    if (!this.building) {
+      this.building = this.loadPlayers()
+        .then((players) => {
+          const idx = new Map<string, number>();
+          for (const p of players) idx.set(p.playerId, this.valueForRank(p.searchRank, p.position));
+          this.index = idx;
+          return idx;
+        })
+        .catch((err) => {
+          // Don't cache a rejected build — a transient load failure would then
+          // fail every future lookup until restart (audit #15). Clear it so the
+          // next call retries.
+          this.building = null;
+          throw err;
+        });
+    }
     return this.building;
   }
 }

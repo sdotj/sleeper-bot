@@ -5,7 +5,7 @@ import { AgentScheduler } from "./scheduler.js";
 
 /** Per-league outcome of a sweep, for the manual-check UI. */
 export interface SweepSummary {
-  leagues: { id: string; recommended: number; skipped?: string }[];
+  leagues: { id: string; recommended: number; failed?: number; skipped?: string }[];
   /** Total recommendations proposed across all leagues. */
   total: number;
 }
@@ -105,7 +105,7 @@ export function startAgent(ctx: AppContext, ops: SleepBotOperations): AgentHandl
       const results: SweepSummary["leagues"] = [];
       for (const { id, autonomy } of leagues()) {
         const r = await runner.sweepLeague(id, autonomy);
-        results.push({ id, recommended: r.recommended, skipped: r.skipped });
+        results.push({ id, recommended: r.recommended, failed: r.failed || undefined, skipped: r.skipped });
       }
       return { leagues: results, total: results.reduce((n, r) => n + r.recommended, 0) };
     },

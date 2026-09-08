@@ -59,6 +59,13 @@ export interface AppContext {
   // --- UI-editable config + secrets (dec.ui-config-editing) ----------------
   /** Re-read the leagues config from the store and rebuild per-league adapters. */
   reload(): Promise<void>;
+  /**
+   * If another process changed the config or Sleeper token (tracked by a store
+   * version stamp), re-read both and rebuild adapters — so a second instance
+   * behind a load balancer doesn't keep serving stale leagues or a dead token
+   * (audit #14). A no-op when already current. Called on write/sweep paths.
+   */
+  refresh(): Promise<void>;
   /** Validate + persist a new leagues config, then adopt it live. Throws (persists nothing) on invalid input. */
   saveConfig(parsed: unknown): Promise<void>;
   /** Discard the stored config and reseed it from the env/file (`SLEEPBOT_CONFIG_JSON` / config file). */
@@ -107,6 +114,15 @@ export async function buildAppContext(config: ConfigRegistry, storeOverride?: St
   let tokenSource = resolved.source;
   const sleeperSession = new SleeperSessionProvider({ token: resolved.token });
 
+  // Version stamp for cross-instance config/token invalidation (audit #14).
+  // Every mutation bumps a monotonic stamp in the store; refresh() reloads when
+  // the stored stamp is ahead of what this process last applied.
+  let appliedVersion = (await store.get<{ version?: number }>("meta", "config_version"))?.version ?? 0;
+  const bumpVersion = async (): Promise<void> => {
+    appliedVersion = Math.max(appliedVersion + 1, Date.now());
+    await store.put("meta", "config_version", { version: appliedVersion });
+  };
+
   const adapters = new Map<string, WriteableLeagueAdapter>();
   const adapterFor = (leagueId: string): WriteableLeagueAdapter => {
     let adapter = adapters.get(leagueId);
@@ -139,11 +155,25 @@ export async function buildAppContext(config: ConfigRegistry, storeOverride?: St
       adapters.clear(); // rebuild against the new config (they share sleeperSession)
     },
 
+    async refresh() {
+      const stored = (await store.get<{ version?: number }>("meta", "config_version"))?.version ?? 0;
+      if (stored <= appliedVersion) return; // already current (or we're the writer)
+      const cfg = await store.get<unknown>("config", "current");
+      if (cfg != null) config.applyConfig(ConfigRegistry.validate(cfg, "stored config"));
+      const tok = await resolveSleeperToken(store);
+      sleeperSession.setToken(tok.token);
+      tokenSource = tok.source;
+      adapters.clear();
+      appliedVersion = stored;
+      console.error(`[context] refreshed config + token to version ${stored} (changed by another instance).`);
+    },
+
     async saveConfig(parsed: unknown) {
       const validated = ConfigRegistry.validate(parsed, "submitted config");
       await store.put("config", "current", validated);
       config.applyConfig(validated);
       adapters.clear();
+      await bumpVersion();
     },
 
     async resetConfigToEnv() {
@@ -151,6 +181,7 @@ export async function buildAppContext(config: ConfigRegistry, storeOverride?: St
       await store.put("config", "current", seed.config);
       config.applyConfig(seed.config);
       adapters.clear();
+      await bumpVersion();
     },
 
     secretsEnabled,
@@ -169,6 +200,7 @@ export async function buildAppContext(config: ConfigRegistry, storeOverride?: St
       });
       sleeperSession.setToken(trimmed); // applies live; clears needs-reauth
       tokenSource = "store";
+      await bumpVersion();
       console.error("[secrets] Sleeper write token updated from the settings panel.");
     },
 
@@ -177,6 +209,7 @@ export async function buildAppContext(config: ConfigRegistry, storeOverride?: St
       const env = envSleeperToken();
       sleeperSession.setToken(env);
       tokenSource = env ? "env" : "none";
+      await bumpVersion();
       console.error("[secrets] stored Sleeper token cleared; reverted to the env token if present.");
     },
 

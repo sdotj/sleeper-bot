@@ -19,6 +19,7 @@ function harness(verdict: RuleVerdict) {
   const perform = vi.fn(async () => ({ status: "executed", result: { message: "sent" }, verdict } as never));
   const notifier = { propose: vi.fn(async () => {}), info: vi.fn(async () => {}) } as unknown as Notifier;
   const ctx = {
+    refresh: vi.fn(async () => {}),
     pipeline: { evaluate: vi.fn(async () => verdict), perform },
     audit: { record: vi.fn(async () => ({})) },
     adapterFor: () => ({ resolvePlayers: async () => [{ playerId: "x", name: "Add Guy", position: "WR", team: "SF" }] }),
@@ -64,6 +65,14 @@ describe("AgentRunner routing (3-way autonomy policy)", () => {
     );
   });
 
+  it("counts a routing failure instead of reporting it as a success (audit #17)", async () => {
+    const { runner, notifier } = harness(allow);
+    // Make routing fail (manual mode routes via notifier.propose).
+    (notifier.propose as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("telegram down"));
+    const out = await runner.sweepLeague("L1", "manual");
+    expect(out).toMatchObject({ recommended: 1, routed: 0, failed: 1 });
+  });
+
   it("resolves player names in the summary", async () => {
     const { runner, notifier } = harness(allow);
     await runner.sweepLeague("L1", "auto");
@@ -92,7 +101,7 @@ describe("AgentRunner routing (3-way autonomy policy)", () => {
 
   it("skips a league with no resolvable roster", async () => {
     const notifier = { propose: vi.fn(), info: vi.fn() } as unknown as Notifier;
-    const ctx = { pipeline: { evaluate: vi.fn(), perform: vi.fn() } } as unknown as AppContext;
+    const ctx = { refresh: vi.fn(async () => {}), pipeline: { evaluate: vi.fn(), perform: vi.fn() } } as unknown as AppContext;
     const ops = { getMyRoster: async () => null } as unknown as SleepBotOperations;
     const runner = new AgentRunner({ ctx, ops, notifier, gather: async () => [addDrop] });
     const r = await runner.sweepLeague("L1", "auto");

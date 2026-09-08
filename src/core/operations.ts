@@ -128,16 +128,22 @@ export class SleepBotOperations {
 
   // --- writes (confirm-by-default via the pipeline) ------------------------
 
-  proposeTrade(leagueId: string, payload: TradePayload) {
+  // Writes refresh cross-instance config/token first (audit #14) so a proposal
+  // or execute never runs against stale leagues or a replaced token.
+  async proposeTrade(leagueId: string, payload: TradePayload) {
+    await this.ctx.refresh();
     return this.ctx.pipeline.propose(leagueId, "trade", payload);
   }
-  proposeWaiverClaim(leagueId: string, payload: WaiverClaimPayload) {
+  async proposeWaiverClaim(leagueId: string, payload: WaiverClaimPayload) {
+    await this.ctx.refresh();
     return this.ctx.pipeline.propose(leagueId, "waiver_claim", payload);
   }
-  proposeAddDrop(leagueId: string, payload: AddDropPayload) {
+  async proposeAddDrop(leagueId: string, payload: AddDropPayload) {
+    await this.ctx.refresh();
     return this.ctx.pipeline.propose(leagueId, "add_drop", payload);
   }
-  executeAction(actionId: string) {
+  async executeAction(actionId: string) {
+    await this.ctx.refresh();
     return this.ctx.pipeline.execute(actionId, "user");
   }
   listPendingActions(leagueId?: string) {

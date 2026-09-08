@@ -26,15 +26,34 @@ export interface AgentDeps {
 export class AgentRunner {
   constructor(private readonly deps: AgentDeps) {}
 
-  async sweepLeague(leagueId: string, autonomy: Autonomy): Promise<{ recommended: number; skipped?: string }> {
+  async sweepLeague(
+    leagueId: string,
+    autonomy: Autonomy,
+  ): Promise<{ recommended: number; routed: number; failed: number; skipped?: string }> {
+    // Pick up config/token changes another instance may have written (audit #14).
+    await this.deps.ctx.refresh().catch(() => {});
     const myRoster = await this.deps.ops.getMyRoster(leagueId);
     if (!myRoster) {
-      return { recommended: 0, skipped: "no roster resolved (set sleeper.username)" };
+      return { recommended: 0, routed: 0, failed: 0, skipped: "no roster resolved (set sleeper.username)" };
     }
     const gather = this.deps.gather ?? ((lid, rid) => this.gather(lid, rid));
     const recs = await gather(leagueId, myRoster.rosterId);
-    for (const rec of recs) await this.route(leagueId, autonomy, rec).catch(() => {});
-    return { recommended: recs.length };
+
+    // Route each recommendation, but DON'T silently swallow failures and then
+    // report every rec as if it landed (audit #17). Count routed vs failed and
+    // log each failure so a broken pipeline/Telegram delivery is visible.
+    let routed = 0;
+    let failed = 0;
+    for (const rec of recs) {
+      try {
+        await this.route(leagueId, autonomy, rec);
+        routed++;
+      } catch (err) {
+        failed++;
+        console.error(`[agent] routing a ${rec.kind} in ${leagueId} failed: ${(err as Error).message}`);
+      }
+    }
+    return { recommended: recs.length, routed, failed };
   }
 
   // --- reasoning: Claude tool loop that captures recommendations --------------

@@ -19,9 +19,12 @@ export function DraftView({ leagueId }: { leagueId: string }) {
   const activeDraft = manualDraftId.trim() || draftId || drafts.data?.[0]?.draftId || null;
   const yourRosterId = rosterId ? Number(rosterId) : undefined;
 
+  // resetKey drops stale data when the draft (or roster/position) changes, but
+  // keeps it across the 5s poll `tick` so the board doesn't flash (audit #16).
   const board = useAsync(
     () => (activeDraft ? api.draftBoard(leagueId, activeDraft, yourRosterId) : Promise.resolve(null)),
     [leagueId, activeDraft, yourRosterId, tick],
+    { resetKey: `${leagueId}:${activeDraft}:${yourRosterId ?? ""}` },
   );
   const recs = useAsync(
     () =>
@@ -29,6 +32,7 @@ export function DraftView({ leagueId }: { leagueId: string }) {
         ? api.draftRecs(leagueId, activeDraft, { rosterId: yourRosterId, position: position || undefined, limit: 12 })
         : Promise.resolve([]),
     [leagueId, activeDraft, position, yourRosterId, tick],
+    { resetKey: `${leagueId}:${activeDraft}:${yourRosterId ?? ""}:${position}` },
   );
 
   // Poll while the draft isn't finished so board + chat context stay live.

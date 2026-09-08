@@ -134,7 +134,7 @@ function Dashboard({ loggedIn }: { loggedIn: boolean }) {
             onLogout={loggedIn ? logout : undefined}
           />
           {active && <Nav active={activeTab} onSelect={onTab} />}
-          {active && onTeam && <Kpis leagueId={active} />}
+          {active && onTeam && <Kpis key={active} leagueId={active} />}
         </div>
       </div>
 
@@ -143,12 +143,15 @@ function Dashboard({ loggedIn }: { loggedIn: boolean }) {
           <p className="text-sm text-danger">⚠ {leagues.error} — is the API running (npm run api)?</p>
         )}
         {active &&
+          // Key league-scoped views by league so switching leagues remounts them
+          // with fresh local state and data — no stale draft/roster or a prior
+          // league's data lingering under the new one (audit #16).
           (onTeam ? (
-            <TeamView leagueId={active} refs={refs} />
+            <TeamView key={active} leagueId={active} refs={refs} />
           ) : page === "Draft" ? (
-            <DraftView leagueId={active} />
+            <DraftView key={active} leagueId={active} />
           ) : page === "Audit" ? (
-            <Audit leagueId={active} />
+            <Audit key={active} leagueId={active} />
           ) : page === "Chat" ? (
             <ChatPane />
           ) : (

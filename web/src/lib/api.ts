@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { authHeaders, getToken, signalAuthRequired } from "./auth";
 import type {
   AgentStatus,
@@ -105,16 +105,30 @@ export const api = {
   agentSweep: () => send<AgentSweepResult>("POST", "/api/agent/sweep"),
 };
 
-/** Tiny async-data hook: re-runs when any dep changes. */
-export function useAsync<T>(fn: () => Promise<T>, deps: unknown[]) {
+/**
+ * Tiny async-data hook: re-runs when any dep changes.
+ *
+ * Previous data is kept visible while refetching so a poll doesn't flash to a
+ * spinner — but ONLY for the same resource. Pass `opts.resetKey` (a string
+ * identifying the resource, e.g. the league/draft id); when it changes, stale
+ * data is dropped so a prior league's/draft's data can't linger under the new
+ * selection (audit #16). Without a resetKey, previous data is always kept.
+ */
+export function useAsync<T>(
+  fn: () => Promise<T>,
+  deps: unknown[],
+  opts: { resetKey?: string } = {},
+) {
+  const { resetKey } = opts;
   const [state, setState] = useState<{ data?: T; error?: string; loading: boolean }>({
     loading: true,
   });
+  const prevKey = useRef(resetKey);
   useEffect(() => {
     let live = true;
-    // Keep any previous data visible while refetching (e.g. draft polling) so
-    // the UI doesn't flash to a spinner on every refresh.
-    setState((s) => ({ data: s.data, loading: true }));
+    const resourceChanged = resetKey !== undefined && prevKey.current !== resetKey;
+    prevKey.current = resetKey;
+    setState((s) => ({ data: resourceChanged ? undefined : s.data, loading: true }));
     fn()
       .then((data) => live && setState({ data, loading: false }))
       .catch((err) => live && setState((s) => ({ data: s.data, error: (err as Error).message, loading: false })));

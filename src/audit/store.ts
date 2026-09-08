@@ -16,6 +16,8 @@ export interface Store {
   get<T = unknown>(collection: string, id: string): Promise<T | null>;
   list<T = unknown>(collection: string): Promise<T[]>;
   delete(collection: string, id: string): Promise<void>;
+  /** Release resources (e.g. a DB pool) on graceful shutdown. Optional. */
+  close?(): Promise<void>;
 }
 
 type Snapshot = Record<string, Record<string, unknown>>;

@@ -24,6 +24,11 @@ export function ChatPane() {
   const [loadingThread, setLoadingThread] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  // Bumped whenever the visible thread changes (open a convo / new chat). An
+  // in-flight request captures the token at send time and only applies its
+  // result if the token still matches — so a response can't land in a thread the
+  // user has since switched away to (audit #16).
+  const viewToken = useRef(0);
 
   // Initial load: list conversations and open the most recent one.
   useEffect(() => {
@@ -53,21 +58,25 @@ export function ChatPane() {
   }
 
   async function openConvo(id: string) {
+    const token = ++viewToken.current;
     setActiveId(id);
     setError(null);
     setLoadingThread(true);
     try {
       const convo = await api.conversation(id);
+      if (viewToken.current !== token) return; // switched threads while loading
       setMessages(convo.messages.map((m) => ({ role: m.role, content: m.content })));
     } catch (e) {
+      if (viewToken.current !== token) return;
       setError((e as Error).message);
       setMessages([]);
     } finally {
-      setLoadingThread(false);
+      if (viewToken.current === token) setLoadingThread(false);
     }
   }
 
   function newChat() {
+    ++viewToken.current;
     setActiveId(null);
     setMessages([]);
     setInput("");
@@ -77,17 +86,23 @@ export function ChatPane() {
   async function send() {
     const text = input.trim();
     if (!text || busy) return;
+    const token = viewToken.current; // the thread this send belongs to
+    const sentConvoId = activeId ?? undefined;
     setMessages((m) => [...m, { role: "user", content: text }]);
     setInput("");
     setBusy(true);
     setError(null);
     try {
-      const res = await api.sendChat(text, activeId ?? undefined);
-      setMessages((m) => [...m, { role: "assistant", content: res.reply }]);
-      if (!activeId) setActiveId(res.conversationId);
+      const res = await api.sendChat(text, sentConvoId);
+      if (viewToken.current === token) {
+        // Still on the thread we sent from — show the reply here.
+        setMessages((m) => [...m, { role: "assistant", content: res.reply }]);
+        if (!sentConvoId) setActiveId(res.conversationId);
+      }
+      // The reply is persisted server-side regardless; refresh the list either way.
       void refreshConvos();
     } catch (e) {
-      setError((e as Error).message);
+      if (viewToken.current === token) setError((e as Error).message);
     } finally {
       setBusy(false);
     }

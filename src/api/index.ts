@@ -38,8 +38,16 @@ async function main(): Promise<void> {
       if (!secret || req.headers["x-telegram-bot-api-secret-token"] !== secret) {
         return reply.status(401).send({ error: "unauthorized" });
       }
-      await agent.notifier.handleUpdate(req.body as never).catch(() => {});
-      return { ok: true };
+      // Don't swallow handler failures and return 200 — that tells Telegram the
+      // update was handled and it won't retry (audit #17). Return 500 so it
+      // re-delivers; the tap handler is idempotent, so a retry is safe.
+      try {
+        await agent.notifier.handleUpdate(req.body as never);
+        return { ok: true };
+      } catch (err) {
+        req.log.error({ err: (err as Error).message }, "telegram webhook handler failed");
+        return reply.status(500).send({ ok: false });
+      }
     });
   }
 
@@ -71,6 +79,33 @@ async function main(): Promise<void> {
   const host = process.env.HOST ?? "127.0.0.1";
   await app.listen({ port, host });
   console.error(`SleepBot API listening on http://${host}:${port}`);
+
+  // Graceful shutdown (audit #17): on SIGTERM (Cloud Run scale-down) / SIGINT,
+  // stop the agent poll loop, drain the HTTP server, and close the DB pool so
+  // in-flight work finishes and connections don't leak.
+  let shuttingDown = false;
+  const shutdown = async (signal: string): Promise<void> => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.error(`SleepBot received ${signal}, shutting down…`);
+    try {
+      agent?.stop();
+    } catch {
+      /* best-effort */
+    }
+    try {
+      await app.close();
+    } catch {
+      /* best-effort */
+    }
+    try {
+      await ctx.store.close?.();
+    } catch {
+      /* best-effort */
+    }
+    process.exit(0);
+  };
+  for (const sig of ["SIGTERM", "SIGINT"] as const) process.once(sig, () => void shutdown(sig));
 }
 
 main().catch((err) => {

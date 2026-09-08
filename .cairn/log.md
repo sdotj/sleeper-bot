@@ -56,3 +56,4 @@
 - scan: nodes=27, findings=21, errors=0
 - scan: nodes=27, findings=21, errors=0
 - scan: nodes=27, findings=21, errors=0
+- scan: nodes=27, findings=21, errors=0

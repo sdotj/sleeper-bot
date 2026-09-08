@@ -52,6 +52,17 @@ into the image.
 > key is only as granular as the address the app sees; the global concurrency cap
 > protects the process regardless.
 
+> **Run one manager instance.** Behind a load balancer, each instance keeps its
+> own adapters/session in memory. A settings or Sleeper-token change bumps a
+> version stamp in the store, and every instance re-reads config + token on its
+> next write or agent sweep — but plain reads can still be briefly stale across
+> instances, and only one poll loop should own Telegram. Keep the agent on a
+> single always-on instance (scale the read API separately if needed). Enabling
+> the *first* agent-enabled league needs a restart.
+>
+> **Graceful shutdown.** On `SIGTERM`/`SIGINT` (Cloud Run scale-down) the service
+> stops the agent poll loop, drains the HTTP server, and closes the DB pool.
+
 The **autonomous manager** runs only for leagues with an `agent` block in their
 config *and* when `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` + `ANTHROPIC_API_KEY`
 are all set — otherwise it stays off and logs why. It needs an **always-on**

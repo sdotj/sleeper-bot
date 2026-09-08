@@ -19,4 +19,16 @@ describe("SleeperRankValueProvider", () => {
     expect(v.get("def1")!).toBe(300); // defense floor, still visible
     expect(v.get("deep")!).toBe(0); // unranked non-DEF
   });
+
+  it("retries after a failed build instead of caching the rejection (audit #15)", async () => {
+    let calls = 0;
+    const vp = new SleeperRankValueProvider(async () => {
+      calls++;
+      if (calls === 1) throw new Error("transient load failure");
+      return players;
+    });
+    await expect(vp.getValue("rb1")).rejects.toThrow(/transient/);
+    expect(await vp.getValue("rb1")).toBeGreaterThan(0); // second attempt succeeds
+    expect(calls).toBe(2);
+  });
 });

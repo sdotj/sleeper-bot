@@ -59,7 +59,14 @@ export class KtcValueProvider implements ValueProvider {
 
   private async ensureIndex(): Promise<Map<string, number>> {
     if (this.index) return this.index;
-    if (!this.building) this.building = this.build();
+    if (!this.building) {
+      // Clear a rejected build so a transient load failure retries next time
+      // rather than failing forever (audit #15).
+      this.building = this.build().catch((err) => {
+        this.building = null;
+        throw err;
+      });
+    }
     this.index = await this.building;
     return this.index;
   }
