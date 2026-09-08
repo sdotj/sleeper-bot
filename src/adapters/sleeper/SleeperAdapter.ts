@@ -36,6 +36,7 @@ import { SleeperWriteClient } from "./sleeperWriteClient.js";
  */
 export class SleeperAdapter implements WriteableLeagueAdapter {
   readonly platform: Platform = "sleeper";
+  readonly capabilities = { write: true, draft: true } as const;
 
   /** Memoized resolution of `username` -> user_id (null when unset/unknown). */
   private selfUserIdPromise?: Promise<string | null>;

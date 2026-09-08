@@ -45,6 +45,8 @@ export class EspnUnsupportedError extends Error {
  */
 export class EspnAdapter implements WriteableLeagueAdapter {
   readonly platform: Platform = "espn";
+  // ESPN has no public write API and no draft endpoints we consume.
+  readonly capabilities = { write: false, draft: false } as const;
 
   constructor(
     private readonly leagueId: string,
@@ -235,7 +237,9 @@ export class EspnAdapter implements WriteableLeagueAdapter {
     throw new EspnUnsupportedError("Writes");
   }
   writeAuthStatus(): WriteAuthStatus {
-    return { state: "needs-reauth" };
+    // Not a lapsed credential — ESPN simply has no write API (audit: distinguish
+    // unsupported from expired auth).
+    return { state: "unsupported" };
   }
 
   // --- internal helpers -----------------------------------------------------

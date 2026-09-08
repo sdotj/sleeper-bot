@@ -14,6 +14,19 @@
 /** Which fantasy platform backs a league. */
 export type Platform = "sleeper" | "espn";
 
+/**
+ * What an adapter can do, so UIs and AI tools omit unsupported operations rather
+ * than discovering them by catching an error — and so "unsupported" is never
+ * confused with "expired auth". Reads are always supported (that's the base
+ * contract); `write` and `draft` vary by platform.
+ */
+export interface AdapterCapabilities {
+  /** Can execute writes (trades / waivers / add-drops). */
+  write: boolean;
+  /** Exposes draft data (board / picks / recommendations). */
+  draft: boolean;
+}
+
 /** A resolved player reference: the id joined to a human-readable name. */
 export interface PlayerRef {
   playerId: string;
@@ -170,6 +183,8 @@ export interface DraftPick {
  */
 export interface LeagueAdapter {
   readonly platform: Platform;
+  /** What this adapter supports, so callers can omit unsupported operations. */
+  readonly capabilities: AdapterCapabilities;
 
   getLeagueInfo(): Promise<LeagueInfo>;
   getRosters(): Promise<Roster[]>;
@@ -240,7 +255,8 @@ export interface WriteResult {
 
 /** Readable state of a platform's write authorization (for a status tool). */
 export interface WriteAuthStatus {
-  state: "ok" | "needs-reauth";
+  /** `unsupported` = the platform has no write API at all (distinct from a lapsed credential). */
+  state: "ok" | "needs-reauth" | "unsupported";
   /** Who the credential belongs to, when known. */
   user?: string;
   /** Credential expiry, epoch seconds, when known. */

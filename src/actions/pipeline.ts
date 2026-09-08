@@ -69,6 +69,9 @@ export class ActionPipeline {
     // (audit #10).
     const payload = validateWritePayload(kind, rawPayload);
     const adapter = this.deps.adapterFor(leagueId);
+    if (!adapter.capabilities.write) {
+      throw new Error(`writes aren't supported for ${adapter.platform} leagues (read-only platform)`);
+    }
     const verdict = await this.deps.rules.evaluate(
       kind,
       payload,
@@ -305,6 +308,9 @@ export class ActionPipeline {
     await this.deps.refresh(); // fail closed: never auto-write against unconfirmed config (audit #4/#14)
     const payload = validateWritePayload(kind, rawPayload); // boundary validation (audit #10)
     const adapter = this.deps.adapterFor(leagueId);
+    if (!adapter.capabilities.write) {
+      throw new Error(`writes aren't supported for ${adapter.platform} leagues (read-only platform)`);
+    }
     const verdict: RuleVerdict = opts.override
       ? { decision: "allow", blockedReasons: [], warnings: ["rule override"] }
       : await this.deps.rules.evaluate(kind, payload, await this.ruleContext(leagueId, adapter, kind, payload));

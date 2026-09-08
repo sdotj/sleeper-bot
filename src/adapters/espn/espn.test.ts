@@ -147,10 +147,11 @@ describe("EspnAdapter", () => {
     expect(t.rosterIds).toEqual([1]);
   });
 
-  it("returns my roster and needs-reauth write status", async () => {
+  it("returns my roster and reports writes as unsupported (not a lapsed credential)", async () => {
     expect((await adapter("{ME}").getMyRoster())!.rosterId).toBe(1);
     expect(await adapter().getMyRoster()).toBeNull(); // no SWID
-    expect(adapter().writeAuthStatus().state).toBe("needs-reauth");
+    expect(adapter().writeAuthStatus().state).toBe("unsupported");
+    expect(adapter().capabilities).toEqual({ write: false, draft: false });
   });
 
   it("throws a clear error for unsupported drafts and writes", async () => {

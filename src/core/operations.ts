@@ -77,6 +77,8 @@ export class SleepBotOperations {
       platform: l.platform,
       sleeperLeagueId: l.sleeper?.leagueId,
       espnLeagueId: l.espn?.leagueId,
+      // So the UI/tools can omit unsupported operations (e.g. ESPN is read-only).
+      capabilities: this.ctx.adapterFor(l.id).capabilities,
     }));
   }
 

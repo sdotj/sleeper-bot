@@ -75,6 +75,7 @@ function Dashboard({ loggedIn }: { loggedIn: boolean }) {
   const leagues = useAsync(() => api.leagues(), []);
   const [leagueId, setLeagueId] = useState<string | null>(null);
   const active = leagueId ?? leagues.data?.[0]?.id ?? null;
+  const activeLeague = (leagues.data ?? []).find((l) => l.id === active);
 
   // null page = the combined team view; `section` tracks scroll-spy within it.
   const [page, setPage] = useState<Page | null>(null);
@@ -203,7 +204,14 @@ function Dashboard({ loggedIn }: { loggedIn: boolean }) {
           // with fresh local state and data — no stale draft/roster or a prior
           // league's data lingering under the new one (audit #16).
           (onTeam ? null : page === "Draft" ? (
-            <DraftView key={active} leagueId={active} />
+            activeLeague?.capabilities && !activeLeague.capabilities.draft ? (
+              <div className="rounded-xl border border-border bg-surface p-6 text-sm text-muted">
+                Drafts aren’t available for {activeLeague.platform} leagues — the platform
+                doesn’t expose a draft API SleepBot can read.
+              </div>
+            ) : (
+              <DraftView key={active} leagueId={active} />
+            )
           ) : page === "Audit" ? (
             <Audit key={active} leagueId={active} />
           ) : page === "Chat" ? (

@@ -4,6 +4,9 @@ export interface League {
   id: string;
   platform: string;
   sleeperLeagueId?: string;
+  espnLeagueId?: string;
+  /** What the platform supports, so the UI can omit unsupported operations. */
+  capabilities?: { write: boolean; draft: boolean };
 }
 
 export interface PlayerRef {
