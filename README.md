@@ -1,5 +1,7 @@
 # SleepBot
 
+[![CI](https://github.com/sdotj/sleeper-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/sdotj/sleeper-bot/actions/workflows/ci.yml)
+
 An MCP server that connects Claude to fantasy football leagues. **Phase 1**:
 read-only tools over Sleeper's public API (no auth required). Built to extend to
 write actions, ESPN, and multiple leagues without changing the tool interface.
