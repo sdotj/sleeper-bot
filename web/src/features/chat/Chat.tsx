@@ -53,7 +53,8 @@ export function Chat({
       });
       const data = await res.json();
       if (!res.ok) {
-        if (res.status === 401 && data.code === "auth_required") signalAuthRequired(sent);
+        if (res.status === 401 && data.code === "auth_required")
+          signalAuthRequired(sent);
         setError(data.error ?? "chat failed");
       } else setMsgs([...history, { role: "assistant", content: data.reply }]);
     } catch (e) {
@@ -65,14 +66,18 @@ export function Chat({
 
   return (
     <div className="flex h-full flex-col">
-      <div ref={listRef} className="flex flex-1 flex-col gap-2.5 overflow-y-auto p-1">
+      <div
+        ref={listRef}
+        className="flex flex-1 flex-col gap-2.5 overflow-y-auto p-1"
+      >
         {msgs.length === 0 && (
           <p className="px-1 py-2 text-sm leading-relaxed text-muted">
             {emptyHint ?? (
               <>
-                Ask SleepBot about your league — “how do my starters look this week?”, “who’s
-                trending on waivers?”, “draft a trade sending my WR2 for a RB”. It uses the same
-                tools; writes stay confirm-first.
+                Ask SleepBot about your league — “how do my starters look this
+                week?”, “who’s trending on waivers?”, “draft a trade sending my
+                WR2 for a RB”. It uses the same tools; writes stay
+                confirm-first.
               </>
             )}
           </p>
@@ -99,7 +104,11 @@ export function Chat({
           rows={1}
           className="h-10 flex-1 resize-none rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-text placeholder:text-faint focus:border-accent/40 focus:outline-none focus:ring-2 focus:ring-accent/40"
         />
-        <Button variant="primary" onClick={() => void send()} disabled={busy || !input.trim()}>
+        <Button
+          variant="primary"
+          onClick={() => void send()}
+          disabled={busy || !input.trim()}
+        >
           Send
         </Button>
       </div>
@@ -136,10 +145,10 @@ export function Bubble({
   return (
     <div
       className={cn(
-        "max-w-[85%] whitespace-pre-wrap rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed",
+        "w-full max-w-full md:max-w-[520px] whitespace-pre-wrap break-words rounded-[16px] px-4 py-[11px] text-[13.5px] leading-[17px]",
         role === "user"
-          ? "self-end rounded-br-md bg-accent text-on-accent"
-          : "self-start rounded-bl-md border border-border bg-surface-2",
+          ? "self-start bg-accent text-on-accent"
+          : "self-start bg-surface-2",
         muted && "text-muted",
       )}
     >

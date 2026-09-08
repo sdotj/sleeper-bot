@@ -65,3 +65,4 @@ None in Phase 1.
 - warning: CAIRN_CONTRACT_LEAF_UNCOVERED leaf node `sleepbot.server` declares no contract
 - warning: CAIRN_CONTRACT_LEAF_UNCOVERED leaf node `sleepbot.tools` declares no contract
 - warning: CAIRN_CONTRACT_LEAF_UNCOVERED leaf node `sleepbot.value` declares no contract
+- info: CAIRN_CHANGE_TASKS_COMPLETE change `figma-ui-replica` has all tasks complete; run `cairn change apply figma-ui-replica` to archive it

@@ -1,45 +1,35 @@
 import type { DraftBoard as Board } from "../../lib/types";
-import { Badge, Card, CardHeader, PositionBadge, SectionLabel } from "../../components/ui";
+import { Card, CardHeader, EmptyState } from "../../components/ui";
+import { cn } from "../../lib/cn";
 
 export function DraftBoard({ board }: { board: Board }) {
-  const otc = board.onTheClock;
   return (
     <Card className="overflow-hidden">
-      <CardHeader
-        title={
-          <span className="flex items-center gap-2">
-            <span className="capitalize">{board.draft.status.replace("_", " ")}</span>
-            {otc && (
-              <Badge variant="accent">
-                on the clock · #{otc.pickNo} (R{otc.round})
-              </Badge>
+      <CardHeader title="Recent picks" />
+      {!board.recentPicks.length && <EmptyState>No picks yet.</EmptyState>}
+      <ol>
+        {board.recentPicks.map((p, i) => (
+          <li
+            key={p.pickNo}
+            className={cn(
+              "flex items-center gap-[10px] px-4 py-[10px]",
+              i % 2 === 1 && "bg-surface-2",
             )}
-          </span>
-        }
-        right={
-          <span className="tabular-nums">
-            {board.pickCount} picks
-            {board.yourNextPickNo != null && (
-              <> · your next <span className="text-accent">#{board.yourNextPickNo}</span></>
-            )}
-          </span>
-        }
-      />
-      {board.recentPicks.length > 0 && (
-        <div className="px-5 py-3">
-          <SectionLabel className="mb-1.5">Recent picks</SectionLabel>
-          <ul className="divide-y divide-border/50">
-            {board.recentPicks.map((p) => (
-              <li key={p.pickNo} className="flex items-center gap-3 py-2">
-                <span className="w-9 shrink-0 text-xs tabular-nums text-faint">#{p.pickNo}</span>
-                <PositionBadge pos={p.position} />
-                <span className="min-w-0 flex-1 truncate">{p.playerName}</span>
-                <span className="shrink-0 text-xs text-faint">R{p.round}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+          >
+            <span className="w-[34px] shrink-0 text-xs font-semibold tabular-nums text-faint">
+              {p.round}.{p.pickNo}
+            </span>
+            <div className="min-w-0">
+              <div className="truncate text-[13px] font-medium leading-4">
+                {p.playerName}
+              </div>
+              <div className="mt-px text-[11px] leading-[13px] text-faint">
+                {p.position} · {p.team ?? "FA"}
+              </div>
+            </div>
+          </li>
+        ))}
+      </ol>
     </Card>
   );
 }

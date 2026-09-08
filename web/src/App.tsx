@@ -4,8 +4,15 @@ import { logout, useAuth } from "./lib/auth";
 import { cn } from "./lib/cn";
 import { Header } from "./components/layout/Header";
 import { Login } from "./features/auth/Login";
+import { scrollSection } from "./features/team/scrollSection";
 import { Kpis } from "./features/team/Kpis";
-import { TeamView, TEAM_SECTIONS, sectionDomId, type SectionRefs, type TeamSection } from "./features/team/TeamView";
+import {
+  TeamView,
+  TEAM_SECTIONS,
+  sectionDomId,
+  type SectionRefs,
+  type TeamSection,
+} from "./features/team/TeamView";
 import { DraftView } from "./features/draft/DraftView";
 import { Audit } from "./features/audit/Audit";
 import { ChatPane } from "./features/chat/ChatPane";
@@ -29,9 +36,18 @@ export function App() {
   return <Dashboard key={token ?? "anon"} loggedIn={Boolean(token)} />;
 }
 
-function Nav({ active, onSelect }: { active: Tab; onSelect: (t: Tab) => void }) {
+function Nav({
+  active,
+  onSelect,
+}: {
+  active: Tab;
+  onSelect: (t: Tab) => void;
+}) {
   return (
-    <nav className="flex items-center gap-1 overflow-x-auto pb-3 pt-1">
+    <nav
+      aria-label="Main navigation"
+      className="flex items-center gap-[6px] overflow-x-auto py-[22px]"
+    >
       {ALL_TABS.map((name) => {
         const isActive = name === active;
         return (
@@ -39,9 +55,12 @@ function Nav({ active, onSelect }: { active: Tab; onSelect: (t: Tab) => void }) 
             key={name}
             type="button"
             onClick={() => onSelect(name)}
+            aria-current={isActive ? "location" : undefined}
             className={cn(
-              "whitespace-nowrap rounded-lg px-3.5 py-2 text-sm transition-colors",
-              isActive ? "bg-accent font-semibold text-on-accent" : "font-medium text-muted hover:text-text",
+              "whitespace-nowrap rounded-[10px] px-3.5 py-[9px] text-[13px] leading-4 transition-colors",
+              isActive
+                ? "bg-accent font-semibold text-on-accent"
+                : "font-medium text-muted hover:text-text",
             )}
           >
             {name}
@@ -72,7 +91,11 @@ function Dashboard({ loggedIn }: { loggedIn: boolean }) {
   useEffect(() => {
     const el = document.querySelector("[data-sticky-header]");
     if (!(el instanceof HTMLElement)) return;
-    const set = () => document.documentElement.style.setProperty("--sticky-h", `${el.offsetHeight + 12}px`);
+    const set = () =>
+      document.documentElement.style.setProperty(
+        "--sticky-h",
+        `${el.offsetHeight + 12}px`,
+      );
     set();
     const ro = new ResizeObserver(set);
     ro.observe(el);
@@ -81,26 +104,40 @@ function Dashboard({ loggedIn }: { loggedIn: boolean }) {
       ro.disconnect();
       window.removeEventListener("resize", set);
     };
-  });
+  }, []);
 
   // Scroll-spy: the active section is the last one whose top has crossed the
   // header line. A plain scroll listener is steadier than an observer here.
   useEffect(() => {
     if (page !== null) return;
     const onScroll = () => {
-      const line = headerHeight() + 24;
-      let current: TeamSection = TEAM_SECTIONS[0];
-      for (const s of TEAM_SECTIONS) {
-        const el = refs[s].current;
-        if (el && el.getBoundingClientRect().top <= line) current = s;
-      }
-      setSection((prev) => (prev === current ? prev : current));
+      const current = scrollSection(
+        TEAM_SECTIONS.flatMap((name) => {
+          const element = refs[name].current;
+          return element
+            ? [{ name, top: element.getBoundingClientRect().top }]
+            : [];
+        }),
+        headerHeight() + 24,
+        window.scrollY,
+        window.innerHeight,
+        document.documentElement.scrollHeight,
+      );
+      if (current) setSection(current);
     };
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
+    window.addEventListener("resize", onScroll);
+    const observer = new ResizeObserver(onScroll);
+    for (const s of TEAM_SECTIONS)
+      if (refs[s].current) observer.observe(refs[s].current!);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      observer.disconnect();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page]);
+  }, [page, active]);
 
   const onTab = (name: Tab) => {
     if ((TEAM_SECTIONS as readonly string[]).includes(name)) {
@@ -113,10 +150,18 @@ function Dashboard({ loggedIn }: { loggedIn: boolean }) {
       // scroll event lets the spy confirm the active section.
       setTimeout(() => {
         const el = document.getElementById(sectionDomId(s));
-        if (el) window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - headerHeight() - 12);
+        if (el)
+          window.scrollTo(
+            0,
+            el.getBoundingClientRect().top +
+              window.scrollY -
+              headerHeight() -
+              12,
+          );
       }, 0);
     } else {
       setPage(name as Page);
+      window.scrollTo(0, 0);
     }
   };
 
@@ -124,31 +169,40 @@ function Dashboard({ loggedIn }: { loggedIn: boolean }) {
   const onTeam = page === null;
 
   return (
-    <div className="min-h-screen">
-      <div data-sticky-header className="sticky top-0 z-30 border-b border-border bg-bg/85 backdrop-blur-md">
-        <div className="mx-auto max-w-6xl px-4">
+    <div className="min-h-screen mx-auto max-w-[1200px] border-x border-border bg-bg">
+      <div data-sticky-header className="sticky top-0 z-30 bg-bg">
+        <div>
           <Header
             leagues={leagues.data ?? []}
             active={active}
             onSelect={setLeagueId}
             onLogout={loggedIn ? logout : undefined}
           />
-          {active && <Nav active={activeTab} onSelect={onTab} />}
-          {active && onTeam && <Kpis key={active} leagueId={active} />}
+          {active && (
+            <div className="px-4 sm:px-7">
+              <Nav active={activeTab} onSelect={onTab} />
+            </div>
+          )}
         </div>
       </div>
 
-      <main className="mx-auto max-w-6xl px-4 py-6">
+      <main className="px-4 pb-7 sm:px-7">
+        {active && (
+          <div key={`team:${active}`} hidden={!onTeam}>
+            <Kpis leagueId={active} />
+            <TeamView leagueId={active} refs={refs} />
+          </div>
+        )}
         {leagues.error && (
-          <p className="text-sm text-danger">⚠ {leagues.error} — is the API running (npm run api)?</p>
+          <p className="text-sm text-danger">
+            ⚠ {leagues.error} — is the API running (npm run api)?
+          </p>
         )}
         {active &&
           // Key league-scoped views by league so switching leagues remounts them
           // with fresh local state and data — no stale draft/roster or a prior
           // league's data lingering under the new one (audit #16).
-          (onTeam ? (
-            <TeamView key={active} leagueId={active} refs={refs} />
-          ) : page === "Draft" ? (
+          (onTeam ? null : page === "Draft" ? (
             <DraftView key={active} leagueId={active} />
           ) : page === "Audit" ? (
             <Audit key={active} leagueId={active} />

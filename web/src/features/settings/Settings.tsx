@@ -8,7 +8,14 @@ import type {
   SleepBotConfigDoc,
   SleeperTokenStatus,
 } from "../../lib/types";
-import { Badge, Button, Card, CardHeader, Select, TextInput } from "../../components/ui";
+import {
+  Badge,
+  Button,
+  Card,
+  CardHeader,
+  Select,
+  TextInput,
+} from "../../components/ui";
 
 /**
  * Settings panel (dec.ui-config-editing): edit the leagues config and the
@@ -17,7 +24,7 @@ import { Badge, Button, Card, CardHeader, Select, TextInput } from "../../compon
  */
 export function Settings() {
   return (
-    <div className="space-y-5">
+    <div className="settings-view space-y-[22px]">
       <LeaguesEditor />
       <AgentPanel />
       <SleeperTokenPanel />
@@ -66,15 +73,17 @@ function AgentPanel() {
         title="Autonomous manager"
         right={
           status && (
-            <Badge variant={on ? "ok" : "neutral"}>{on ? `on · ${status.mode ?? "?"}` : "off"}</Badge>
+            <Badge variant={on ? "ok" : "neutral"}>
+              {on ? `on · ${status.mode ?? "?"}` : "off"}
+            </Badge>
           )
         }
       />
-      <div className="space-y-3 p-5">
+      <div className="space-y-3 p-[18px]">
         <p className="text-sm text-muted">
-          Run a one-off check now: the manager scans your enabled league(s), and if it likes a
-          waiver/add/trade it sends a proposal to Telegram with Approve/Deny buttons. You’ll get a
-          Telegram summary either way — a quick way to confirm the channel is live.
+          Run a one-off check now: the manager scans your enabled leagues and
+          sends proposals to Telegram with Approve / Deny. You get a summary
+          either way.
         </p>
         {error && <p className="text-sm text-danger">⚠ {error}</p>}
 
@@ -82,25 +91,36 @@ function AgentPanel() {
           <Button variant="primary" onClick={runCheck} disabled={busy || !on}>
             {busy ? "Checking… (~30s)" : "Run a check now"}
           </Button>
-          {busy && <span className="text-xs text-faint">Reasoning over your roster…</span>}
+          {busy && (
+            <span className="text-xs text-faint">
+              Reasoning over your roster…
+            </span>
+          )}
         </div>
 
         {!on && status && (
           <p className="text-sm text-warn">
-            The manager is off. It needs Telegram (bot token + chat id), an Anthropic key, and at least
-            one league with the agent enabled (set that per league above).
+            The manager is off. It needs Telegram (bot token + chat id), an
+            Anthropic key, and at least one league with the agent enabled (set
+            that per league above).
           </p>
         )}
 
-        {result && !result.ran && <p className="text-sm text-warn">{result.reason}</p>}
+        {result && !result.ran && (
+          <p className="text-sm text-warn">{result.reason}</p>
+        )}
         {result?.ran && (
           <div className="text-sm text-muted">
             {result.total ? (
               <p className="text-ok">
-                Sent {result.total} proposal{result.total === 1 ? "" : "s"} to Telegram. Check your chat.
+                Sent {result.total} proposal{result.total === 1 ? "" : "s"} to
+                Telegram. Check your chat.
               </p>
             ) : (
-              <p>Swept {result.leagues?.length ?? 0} league(s) — nothing worth proposing right now. (Sent a summary to Telegram.)</p>
+              <p>
+                Swept {result.leagues?.length ?? 0} league(s) — nothing worth
+                proposing right now. (Sent a summary to Telegram.)
+              </p>
             )}
             <ul className="mt-1 space-y-0.5 text-xs text-faint">
               {result.leagues?.map((l) => (
@@ -167,38 +187,26 @@ function MemoryPanel() {
 
   return (
     <Card>
-      <CardHeader title="Assistant memory" right={notes ? <Badge>{notes.length} note{notes.length === 1 ? "" : "s"}</Badge> : null} />
-      <div className="space-y-3 p-5">
+      <CardHeader
+        title="Assistant memory"
+        right={
+          notes ? (
+            <Badge>
+              {notes.length} note{notes.length === 1 ? "" : "s"}
+            </Badge>
+          ) : null
+        }
+      />
+      <div className="space-y-3 p-[18px]">
         <p className="text-sm text-muted">
-          Durable facts the assistant applies in every chat — your team’s situation, preferences, league
-          quirks. It saves these on its own as it learns them (marked <span className="text-accent">auto</span>),
-          you can add your own, and it keeps the most recent 50. Delete anything you don’t want kept.
+          Durable facts the assistant applies in every chat. It adds these when
+          you say “remember that…”, or add your own.
         </p>
         {error && <p className="text-sm text-danger">⚠ {error}</p>}
 
-        <div className="flex items-end gap-2">
-          <label className="block flex-1 space-y-1">
-            <span className="text-xs font-medium text-muted">Add a note</span>
-            <TextInput
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  void add();
-                }
-              }}
-              placeholder="e.g. I'm rebuilding — value youth over win-now"
-              disabled={busy}
-              className="w-full"
-            />
-          </label>
-          <Button variant="primary" onClick={add} disabled={busy || !text.trim()}>
-            Add
-          </Button>
-        </div>
-
-        {notes?.length === 0 && <p className="text-sm text-faint">No memory yet.</p>}
+        {notes?.length === 0 && (
+          <p className="text-sm text-faint">No memory yet.</p>
+        )}
         <ul className="space-y-1.5">
           {notes?.map((n) => (
             <li
@@ -217,6 +225,31 @@ function MemoryPanel() {
             </li>
           ))}
         </ul>
+        <div className="flex items-end gap-2">
+          <label className="block flex-1 space-y-1">
+            <span className="sr-only">Add a note</span>
+            <TextInput
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void add();
+                }
+              }}
+              placeholder="Add a note…"
+              disabled={busy}
+              className="w-full"
+            />
+          </label>
+          <Button
+            variant="primary"
+            onClick={add}
+            disabled={busy || !text.trim()}
+          >
+            Add
+          </Button>
+        </div>
       </div>
     </Card>
   );
@@ -247,21 +280,45 @@ function LeaguesEditor() {
   }
 
   function patch(i: number, next: Partial<LeagueConfig>) {
-    setLeagues((ls) => ls && ls.map((l, idx) => (idx === i ? { ...l, ...next } : l)));
-    setSaved(false);
-  }
-  function patchSleeper(i: number, next: Partial<NonNullable<LeagueConfig["sleeper"]>>) {
     setLeagues(
-      (ls) => ls && ls.map((l, idx) => (idx === i ? { ...l, sleeper: { leagueId: "", ...l.sleeper, ...next } } : l)),
+      (ls) => ls && ls.map((l, idx) => (idx === i ? { ...l, ...next } : l)),
     );
     setSaved(false);
   }
-  function patchAgent(i: number, next: Partial<NonNullable<LeagueConfig["agent"]>>) {
+  function patchSleeper(
+    i: number,
+    next: Partial<NonNullable<LeagueConfig["sleeper"]>>,
+  ) {
     setLeagues(
       (ls) =>
         ls &&
         ls.map((l, idx) =>
-          idx === i ? { ...l, agent: { enabled: false, autonomy: "manual", ...l.agent, ...next } } : l,
+          idx === i
+            ? { ...l, sleeper: { leagueId: "", ...l.sleeper, ...next } }
+            : l,
+        ),
+    );
+    setSaved(false);
+  }
+  function patchAgent(
+    i: number,
+    next: Partial<NonNullable<LeagueConfig["agent"]>>,
+  ) {
+    setLeagues(
+      (ls) =>
+        ls &&
+        ls.map((l, idx) =>
+          idx === i
+            ? {
+                ...l,
+                agent: {
+                  enabled: false,
+                  autonomy: "manual",
+                  ...l.agent,
+                  ...next,
+                },
+              }
+            : l,
         ),
     );
     setSaved(false);
@@ -269,7 +326,12 @@ function LeaguesEditor() {
   function addLeague() {
     setLeagues((ls) => [
       ...(ls ?? []),
-      { id: "", platform: "sleeper", sleeper: { leagueId: "", username: "" }, valueMode: "redraft" },
+      {
+        id: "",
+        platform: "sleeper",
+        sleeper: { leagueId: "", username: "" },
+        valueMode: "redraft",
+      },
     ]);
     setSaved(false);
   }
@@ -295,7 +357,12 @@ function LeaguesEditor() {
   }
 
   async function resetToEnv() {
-    if (!confirm("Discard the stored config and reload it from the server's environment?")) return;
+    if (
+      !confirm(
+        "Discard the stored config and reload it from the server's environment?",
+      )
+    )
+      return;
     setBusy(true);
     setError(null);
     try {
@@ -322,18 +389,29 @@ function LeaguesEditor() {
           </div>
         }
       />
-      <div className="space-y-4 p-5">
+      <div className="space-y-[14px] p-[18px]">
         {error && <p className="text-sm text-danger">⚠ {error}</p>}
-        {leagues == null && !error && <p className="text-sm text-muted">Loading…</p>}
-        {leagues?.length === 0 && <p className="text-sm text-muted">No leagues yet — add one.</p>}
+        {leagues == null && !error && (
+          <p className="text-sm text-muted">Loading…</p>
+        )}
+        {leagues?.length === 0 && (
+          <p className="text-sm text-muted">No leagues yet — add one.</p>
+        )}
 
         {leagues?.map((l, i) => (
-          <div key={i} className="space-y-3 rounded-lg border border-border bg-surface-2/50 p-4">
+          <div
+            key={i}
+            className="space-y-3 rounded-[10px] border border-border bg-surface-2 p-4"
+          >
             <div className="flex items-center justify-between">
               <span className="text-[0.64rem] font-semibold uppercase tracking-[0.09em] text-faint">
                 League {i + 1}
               </span>
-              <Button onClick={() => removeLeague(i)} disabled={busy} className="text-danger">
+              <Button
+                onClick={() => removeLeague(i)}
+                disabled={busy}
+                className="h-auto! border-0! bg-transparent! p-0! text-danger!"
+              >
                 Remove
               </Button>
             </div>
@@ -350,7 +428,9 @@ function LeaguesEditor() {
               <Field label="Sleeper league id">
                 <TextInput
                   value={l.sleeper?.leagueId ?? ""}
-                  onChange={(e) => patchSleeper(i, { leagueId: e.target.value })}
+                  onChange={(e) =>
+                    patchSleeper(i, { leagueId: e.target.value })
+                  }
                   placeholder="1234567890"
                   className="w-full"
                 />
@@ -358,7 +438,9 @@ function LeaguesEditor() {
               <Field label="Sleeper username">
                 <TextInput
                   value={l.sleeper?.username ?? ""}
-                  onChange={(e) => patchSleeper(i, { username: e.target.value })}
+                  onChange={(e) =>
+                    patchSleeper(i, { username: e.target.value })
+                  }
                   placeholder="your-handle"
                   className="w-full"
                 />
@@ -366,7 +448,11 @@ function LeaguesEditor() {
               <Field label="Value mode">
                 <Select
                   value={l.valueMode}
-                  onChange={(e) => patch(i, { valueMode: e.target.value as LeagueConfig["valueMode"] })}
+                  onChange={(e) =>
+                    patch(i, {
+                      valueMode: e.target.value as LeagueConfig["valueMode"],
+                    })
+                  }
                   className="w-full"
                 >
                   <option value="redraft">redraft (Sleeper ranks)</option>
@@ -376,22 +462,30 @@ function LeaguesEditor() {
               <Field label="Autonomous agent">
                 <Select
                   value={l.agent?.enabled ? "on" : "off"}
-                  onChange={(e) => patchAgent(i, { enabled: e.target.value === "on" })}
+                  onChange={(e) =>
+                    patchAgent(i, { enabled: e.target.value === "on" })
+                  }
                   className="w-full"
                 >
                   <option value="off">off</option>
                   <option value="on">on</option>
                 </Select>
               </Field>
-              <Field label="Autonomy (when agent on)">
+              <Field label="Autonomy">
                 <Select
                   value={l.agent?.autonomy ?? "manual"}
-                  onChange={(e) => patchAgent(i, { autonomy: e.target.value as "manual" | "auto" })}
+                  onChange={(e) =>
+                    patchAgent(i, {
+                      autonomy: e.target.value as "manual" | "auto",
+                    })
+                  }
                   className="w-full"
                   disabled={!l.agent?.enabled}
                 >
                   <option value="manual">manual (approve every action)</option>
-                  <option value="auto">auto (clean actions auto-execute)</option>
+                  <option value="auto">
+                    auto (clean actions auto-execute)
+                  </option>
                 </Select>
               </Field>
             </div>
@@ -399,17 +493,17 @@ function LeaguesEditor() {
         ))}
 
         <div className="flex items-center gap-2 pt-1">
-          <Button variant="primary" onClick={save} disabled={busy || leagues == null}>
+          <Button
+            variant="primary"
+            onClick={save}
+            disabled={busy || leagues == null}
+          >
             {busy ? "Saving…" : "Save leagues"}
           </Button>
           <Button onClick={resetToEnv} disabled={busy}>
             Reset to env config
           </Button>
         </div>
-        <p className="text-xs text-faint">
-          Saved to the database and applied live — no redeploy. “Reset to env” restores the config the
-          server booted with (SLEEPBOT_CONFIG_JSON / config file).
-        </p>
       </div>
     </Card>
   );
@@ -456,7 +550,12 @@ function SleeperTokenPanel() {
   }
 
   async function clear() {
-    if (!confirm("Remove the stored Sleeper token and revert to the server's env token (if any)?")) return;
+    if (
+      !confirm(
+        "Remove the stored Sleeper token and revert to the server's env token (if any)?",
+      )
+    )
+      return;
     setBusy(true);
     setError(null);
     try {
@@ -488,31 +587,38 @@ function SleeperTokenPanel() {
           )
         }
       />
-      <div className="space-y-3 p-5">
+      <div className="space-y-3 p-[18px]">
         {error && <p className="text-sm text-danger">⚠ {error}</p>}
         {status && (
           <p className="text-sm text-muted">
             {status.state === "ok" ? (
               <>
                 Token active{status.user ? ` for ${status.user}` : ""}
-                {days != null ? ` · expires in ~${days} day${days === 1 ? "" : "s"}` : ""}.
+                {days != null
+                  ? ` · expires in ~${days} day${days === 1 ? "" : "s"}`
+                  : ""}
+                .
               </>
             ) : (
-              <>No usable token — writes are paused (reads still work). Paste a fresh token below.</>
+              <>
+                No usable token — writes are paused (reads still work). Paste a
+                fresh token below.
+              </>
             )}
           </p>
         )}
 
         {status && !status.editable && (
           <p className="text-sm text-warn">
-            Saving secrets is disabled: set <code className="text-text">SLEEPBOT_SECRET_KEY</code> on the
-            server (and redeploy) to store the token from here.
+            Saving secrets is disabled: set{" "}
+            <code className="text-text">SLEEPBOT_SECRET_KEY</code> on the server
+            (and redeploy) to store the token from here.
           </p>
         )}
 
         <div className="flex items-end gap-2">
           <label className="block flex-1 space-y-1">
-            <span className="text-xs font-medium text-muted">New token (paste the Sleeper JWT)</span>
+            <span className="sr-only">New Sleeper token</span>
             <TextInput
               type="password"
               value={token}
@@ -523,7 +629,11 @@ function SleeperTokenPanel() {
               className="w-full font-mono"
             />
           </label>
-          <Button variant="primary" onClick={save} disabled={busy || !token.trim() || !status?.editable}>
+          <Button
+            variant="primary"
+            onClick={save}
+            disabled={busy || !token.trim() || !status?.editable}
+          >
             {busy ? "Saving…" : "Save token"}
           </Button>
           {status?.source === "store" && (
@@ -534,19 +644,26 @@ function SleeperTokenPanel() {
         </div>
         {saved && <Badge variant="ok">token updated</Badge>}
         <p className="text-xs text-faint">
-          Capture it from a logged-in Sleeper session (DevTools → Network → any graphql request → copy
-          the <code className="text-muted">authorization</code> header). Stored encrypted; applied
-          immediately.
+          Capture it from a logged-in Sleeper session (DevTools → Network → any
+          graphql request → copy the{" "}
+          <code className="text-muted">authorization</code> header). Stored
+          encrypted; applied immediately.
         </p>
       </div>
     </Card>
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
     <label className="block space-y-1">
-      <span className="text-xs font-medium text-muted">{label}</span>
+      <span className="text-[11px] leading-[13px] font-medium text-muted">{label}</span>
       {children}
     </label>
   );

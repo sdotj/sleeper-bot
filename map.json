@@ -1584,6 +1584,8 @@
         "web/src/features/standings/Standings.tsx",
         "web/src/features/team/Kpis.tsx",
         "web/src/features/team/TeamView.tsx",
+        "web/src/features/team/scrollSection.test.ts",
+        "web/src/features/team/scrollSection.ts",
         "web/src/lib/api.ts",
         "web/src/lib/auth.ts",
         "web/src/lib/cn.ts",
@@ -1619,12 +1621,12 @@
           "end_line": 106
         },
         {
-          "name": "export const sectionDomId = (s: TeamSection) => `sec-${s.toLowerCase().replace(/[^a-z0-9]+/g, \"-\")}`;",
+          "name": "export const sectionDomId = (s: TeamSection) =>\n  `sec-${s.toLowerCase().replace(/[^a-z0-9]+/g, \"-\")}`;",
           "kind": "variable",
           "signature": "export_statement:export const sectionDomId = (s: TeamSection) => `sec-${s.toLowerCase().replace(/[^a-z0-9]+/g, \"-\")}`;",
           "file": "web/src/features/team/TeamView.tsx",
-          "line": 17,
-          "end_line": 17
+          "line": 11,
+          "end_line": 12
         },
         {
           "name": "export default defineConfig({\n  plugins: [react(), tailwindcss()],\n  server: {\n    port: 5173,\n    proxy: { \"/api\": process.env.SLEEPBOT_API ?? \"http://127.0.0.1:8787\" },\n  },\n});",
@@ -1637,10 +1639,10 @@
         {
           "name": "App",
           "kind": "function",
-          "signature": "export_statement:export function App() { const { token, authRequired } = useAuth(); if (authRequired) return <Login />; return <Dashboard key={token ?? \"anon\"} loggedIn={Boolean(token)} />; } function Nav({ active, onSelect }: { active: Tab; onSelect: (t: Tab) => void }) { return ( <nav className=\"flex items-center gap-1 overflow-x-auto pb-3 pt-1\"> {ALL_TABS.map((name) => { const isActive = name === active; return ( <button key={name} type=\"button\" onClick={() => onSelect(name)} className={cn( \"whitespace-nowrap rounded-lg px-3.5 py-2 text-sm transition-colors\", isActive ? \"bg-accent font-semibold text-on-accent\" : \"font-medium text-muted hover:text-text\", )} > {name} </button> ); })} </nav> ); } function Dashboard({ loggedIn }: { loggedIn: boolean }) { const leagues = useAsync(() => api.leagues(), []); const [leagueId, setLeagueId] = useState<string | null>(null); const active = leagueId ?? leagues.data?.[0]?.id ?? null; // null page = the combined team view; `section` tracks scroll-spy within it. const [page, setPage] = useState<Page | null>(null); const [section, setSection] = useState<TeamSection>(\"My Team\"); const refs: SectionRefs = { \"My Team\": useRef<HTMLElement>(null), Standings: useRef<HTMLElement>(null), Matchups: useRef<HTMLElement>(null), }; // Keep --sticky-h in sync with the header's height, so each section's // scroll-margin-top lands it just below the header on a jump. useEffect(() => { const el = document.querySelector(\"[data-sticky-header]\"); if (!(el instanceof HTMLElement)) return; const set = () => document.documentElement.style.setProperty(\"--sticky-h\", `${el.offsetHeight + 12}px`); set(); const ro = new ResizeObserver(set); ro.observe(el); window.addEventListener(\"resize\", set); return () => { ro.disconnect(); window.removeEventListener(\"resize\", set); }; }",
+          "signature": "export_statement:export function App() { const { token, authRequired } = useAuth(); if (authRequired) return <Login />; return <Dashboard key={token ?? \"anon\"} loggedIn={Boolean(token)} />; } function Nav({ active, onSelect, }: { active: Tab; onSelect: (t: Tab) => void; }) { return ( <nav aria-label=\"Main navigation\" className=\"flex items-center gap-[6px] overflow-x-auto py-[22px]\" > {ALL_TABS.map((name) => { const isActive = name === active; return ( <button key={name} type=\"button\" onClick={() => onSelect(name)} aria-current={isActive ? \"location\" : undefined} className={cn( \"whitespace-nowrap rounded-[10px] px-3.5 py-[9px] text-[13px] leading-4 transition-colors\", isActive ? \"bg-accent font-semibold text-on-accent\" : \"font-medium text-muted hover:text-text\", )} > {name} </button> ); })} </nav> ); } function Dashboard({ loggedIn }: { loggedIn: boolean }) { const leagues = useAsync(() => api.leagues(), []); const [leagueId, setLeagueId] = useState<string | null>(null); const active = leagueId ?? leagues.data?.[0]?.id ?? null; // null page = the combined team view; `section` tracks scroll-spy within it. const [page, setPage] = useState<Page | null>(null); const [section, setSection] = useState<TeamSection>(\"My Team\"); const refs: SectionRefs = { \"My Team\": useRef<HTMLElement>(null), Standings: useRef<HTMLElement>(null), Matchups: useRef<HTMLElement>(null), }; // Keep --sticky-h in sync with the header's height, so each section's // scroll-margin-top lands it just below the header on a jump. useEffect(() => { const el = document.querySelector(\"[data-sticky-header]\"); if (!(el instanceof HTMLElement)) return; const set = () => document.documentElement.style.setProperty( \"--sticky-h\", `${el.offsetHeight + 12}px`, ); set(); const ro = new ResizeObserver(set); ro.observe(el); window.addEventListener(\"resize\", set); return () => { ro.disconnect(); window.removeEventListener(\"resize\", set); }; }",
           "file": "web/src/App.tsx",
-          "line": 26,
-          "end_line": 84
+          "line": 33,
+          "end_line": 107
         },
         {
           "name": "Async",
@@ -1659,20 +1661,28 @@
           "end_line": 34
         },
         {
+          "name": "Button",
+          "kind": "function",
+          "signature": "export_statement:export function Button({ variant = \"ghost\", className, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: \"ghost\" | \"primary\"; }) { const variants = { ghost: \"bg-surface-2 text-muted border border-border hover:text-text hover:border-border-strong\", primary: \"bg-accent text-on-accent font-semibold hover:bg-accent-strong\", }; return ( <button className={cn( \"inline-flex h-9 items-center justify-center rounded-[9px] px-3.5 text-[13px] font-medium transition-colors disabled:opacity-50 disabled:cursor-default\", variants[variant], className, )} {...props} /> ); } export function Select({ className, ...props }: SelectHTMLAttributes<HTMLSelectElement>) { return ( <select className={cn(FIELD, \"px-2.5 hover:border-border-strong\", className)} {...props} /> ); }",
+          "file": "web/src/components/ui/controls.tsx",
+          "line": 14,
+          "end_line": 48
+        },
+        {
           "name": "Card",
           "kind": "function",
-          "signature": "export_statement:export function Card({ className, children }: { className?: string; children: ReactNode }) { return ( <div className={cn( \"rounded-xl border border-border bg-surface/90 shadow-lg shadow-black/25 backdrop-blur-sm\", className, )} > {children} </div> ); }",
+          "signature": "export_statement:export function Card({ className, children, }: { className?: string; children: ReactNode; }) { return ( <div className={cn( \"rounded-[14px] border border-border bg-surface\", className, )} > {children} </div> ); }",
           "file": "web/src/components/ui/Card.tsx",
           "line": 4,
-          "end_line": 15
+          "end_line": 21
         },
         {
           "name": "CardHeader",
           "kind": "function",
-          "signature": "export_statement:export function CardHeader({ title, right, className, }: { title: ReactNode; right?: ReactNode; className?: string; }) { return ( <div className={cn( \"flex items-center justify-between gap-3 border-b border-border/70 px-5 py-3.5\", className, )} > <h3 className=\"text-[0.95rem] font-semibold tracking-tight\">{title}</h3> {right != null && <div className=\"text-sm text-muted\">{right}</div>} </div> ); }",
+          "signature": "export_statement:export function CardHeader({ title, right, className, }: { title: ReactNode; right?: ReactNode; className?: string; }) { return ( <div className={cn( \"flex items-center justify-between gap-3 border-b border-border px-[18px] py-[15px]\", className, )} > <h3 className=\"text-[15px] leading-[18px] font-semibold\">{title}</h3> {right != null && <div className=\"text-xs text-muted\">{right}</div>} </div> ); }",
           "file": "web/src/components/ui/Card.tsx",
-          "line": 17,
-          "end_line": 37
+          "line": 23,
+          "end_line": 43
         },
         {
           "name": "EmptyState",
@@ -1691,12 +1701,28 @@
           "end_line": 73
         },
         {
+          "name": "MyTeam",
+          "kind": "function",
+          "signature": "export_statement:export function MyTeam({ leagueId }: { leagueId: string }) { const state = useAsync(() => api.myRoster(leagueId), [leagueId]); return ( <Async state={state}> {(roster) => !roster ? ( <Card> <EmptyState> No “my team” set. Add{\" \"} <code className=\"rounded bg-surface-2 px-1 py-0.5\"> sleeper.username </code>{\" \"} to your league config so SleepBot knows which roster is yours. </EmptyState> </Card> ) : ( <Card className=\"overflow-hidden\"> <CardHeader title={ <span className=\"flex flex-wrap items-center gap-2\"> My Team{\" \"} <span className=\"text-[13px] font-medium text-muted\"> {roster.ownerName} </span> </span> } right={ <span className=\"text-accent\" title=\"Player projections are unavailable\" > Proj — </span> } /> <Group label=\"Starters\" players={roster.starters} /> <Group label=\"Bench\" players={roster.bench} /> <Group label=\"IR\" players={roster.reserve} /> <Group label=\"Taxi\" players={roster.taxi} /> </Card> ) } </Async> ); }",
+          "file": "web/src/features/myTeam/MyTeam.tsx",
+          "line": 48,
+          "end_line": 92
+        },
+        {
           "name": "PositionBadge",
           "kind": "function",
-          "signature": "export_statement:export function PositionBadge({ pos, className }: { pos: string; className?: string }) { const key = (pos || \"\").toUpperCase(); return ( <span className={cn( \"inline-flex w-10 justify-center rounded-md px-1.5 py-1 text-[0.62rem] font-bold tracking-wide\", POS[key] ?? \"bg-surface-2 text-faint\", className, )} > {key || \"—\"} </span> ); }",
+          "signature": "export_statement:export function PositionBadge({ pos, className, }: { pos: string; className?: string; }) { const key = (pos || \"\").toUpperCase(); return ( <span className={cn( \"inline-flex w-[42px] shrink-0 justify-center rounded-md px-1.5 py-[5px] text-[10px] leading-[14px] font-bold tracking-wide\", POS[key] ?? \"bg-surface-2 text-faint\", className, )} > {key || \"—\"} </span> ); }",
           "file": "web/src/components/ui/Badge.tsx",
           "line": 46,
-          "end_line": 59
+          "end_line": 65
+        },
+        {
+          "name": "SectionLabel",
+          "kind": "function",
+          "signature": "export_statement:export function SectionLabel({ children, className, }: { children: ReactNode; className?: string; }) { return ( <div className={cn( \"text-[0.64rem] font-semibold uppercase tracking-[0.09em] text-faint\", className, )} > {children} </div> ); }",
+          "file": "web/src/components/ui/controls.tsx",
+          "line": 62,
+          "end_line": 79
         },
         {
           "name": "Spinner",
@@ -1713,6 +1739,14 @@
           "file": "web/src/components/ui/Tabs.tsx",
           "line": 3,
           "end_line": 30
+        },
+        {
+          "name": "TextInput",
+          "kind": "function",
+          "signature": "export_statement:export function TextInput({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) { return ( <input className={cn(FIELD, \"px-3 placeholder:text-faint\", className)} {...props} /> ); }",
+          "file": "web/src/components/ui/controls.tsx",
+          "line": 50,
+          "end_line": 60
         },
         {
           "name": "applyTheme",
@@ -1769,6 +1803,14 @@
           "file": "web/src/lib/auth.ts",
           "line": 99,
           "end_line": 106
+        },
+        {
+          "name": "scrollSection",
+          "kind": "function",
+          "signature": "export_statement:export function scrollSection<T extends string>( sections: readonly { name: T; top: number }[], line: number, scrollY: number, viewportHeight: number, documentHeight: number, ): T | undefined { if (!sections.length) return undefined; // The final section may never reach the navigation line before scrolling ends. if (scrollY > 0 && scrollY + viewportHeight >= documentHeight - 2) return sections[sections.length - 1].name; let active = sections[0].name; for (const section of sections) if (section.top <= line) active = section.name; return active; }",
+          "file": "web/src/features/team/scrollSection.ts",
+          "line": 2,
+          "end_line": 17
         },
         {
           "name": "setTheme",
@@ -3092,6 +3134,13 @@
     }
   ],
   "findings": [
+    {
+      "code": "CAIRN_CHANGE_TASKS_COMPLETE",
+      "severity": "info",
+      "message": "change `figma-ui-replica` has all tasks complete; run `cairn change apply figma-ui-replica` to archive it",
+      "node": "figma-ui-replica",
+      "path": "meta/changes/figma-ui-replica/tasks.md"
+    },
     {
       "code": "CAIRN_CONTRACT_LEAF_UNCOVERED",
       "severity": "warning",

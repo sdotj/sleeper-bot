@@ -1,11 +1,17 @@
 import type { ReactNode } from "react";
 import { cn } from "../../lib/cn";
 
-export function Card({ className, children }: { className?: string; children: ReactNode }) {
+export function Card({
+  className,
+  children,
+}: {
+  className?: string;
+  children: ReactNode;
+}) {
   return (
     <div
       className={cn(
-        "rounded-xl border border-border bg-surface/90 shadow-lg shadow-black/25 backdrop-blur-sm",
+        "rounded-[14px] border border-border bg-surface",
         className,
       )}
     >
@@ -26,12 +32,12 @@ export function CardHeader({
   return (
     <div
       className={cn(
-        "flex items-center justify-between gap-3 border-b border-border/70 px-5 py-3.5",
+        "flex items-center justify-between gap-3 border-b border-border px-[18px] py-[15px]",
         className,
       )}
     >
-      <h3 className="text-[0.95rem] font-semibold tracking-tight">{title}</h3>
-      {right != null && <div className="text-sm text-muted">{right}</div>}
+      <h3 className="text-[15px] leading-[18px] font-semibold">{title}</h3>
+      {right != null && <div className="text-xs text-muted">{right}</div>}
     </div>
   );
 }

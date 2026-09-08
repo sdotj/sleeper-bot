@@ -1,6 +1,5 @@
 import { api, useAsync } from "../../lib/api";
 import { cn } from "../../lib/cn";
-import type { StandingRow } from "../../lib/types";
 import { Async, Card, CardHeader } from "../../components/ui";
 
 export function Standings({ leagueId }: { leagueId: string }) {
@@ -9,48 +8,84 @@ export function Standings({ leagueId }: { leagueId: string }) {
     <Async state={state}>
       {(rows) => (
         <Card className="overflow-hidden">
-          <CardHeader title="Standings" right={<span className="text-muted">{rows.length} teams</span>} />
+          <CardHeader title="Standings" right={`${rows.length} teams`} />
           <div className="overflow-x-auto">
-            <div className="min-w-[520px]">
-              <div className="flex items-center gap-3 border-b border-border px-5 py-2.5 text-[0.62rem] font-semibold uppercase tracking-[0.09em] text-faint">
-                <span className="w-6">#</span>
-                <span className="flex-1">Team</span>
-                <span className="w-16 text-right">W-L</span>
-                <span className="w-20 text-right">PF</span>
-                <span className="w-20 text-right">PA</span>
-              </div>
-              {rows.map((r, i) => (
-                <StandingRowView key={r.rosterId} r={r} zebra={i % 2 === 1} />
-              ))}
-            </div>
+            <table className="w-full min-w-[600px] table-fixed text-[13px] leading-4">
+              <colgroup>
+                <col className="w-[56px]" />
+                <col />
+                <col className="w-[72px]" />
+                <col className="w-[90px]" />
+                <col className="w-[90px]" />
+                <col className="w-[96px]" />
+              </colgroup>
+              <thead>
+                <tr className="border-b border-border text-[11px] font-semibold text-faint">
+                  <th className="py-[10px] pl-[18px] text-left">#</th>
+                  <th className="text-left">TEAM</th>
+                  {["W-L", "PF", "PA", "STREAK"].map((t) => (
+                    <th key={t} className="py-[10px] pr-[18px] text-right">
+                      {t}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r, i) => (
+                  <tr
+                    key={r.rosterId}
+                    className={cn(
+                      "h-[55px]",
+                      r.isYou
+                        ? "bg-accent-tint"
+                        : i % 2 === 1 && "bg-surface-2",
+                    )}
+                  >
+                    <td
+                      className={cn(
+                        "pl-[18px] text-[14px] font-bold",
+                        r.isYou
+                          ? "text-accent shadow-[inset_3px_0_var(--color-accent)]"
+                          : "text-muted",
+                      )}
+                    >
+                      {r.rank}
+                    </td>
+                    <td className="py-[11px] pr-3">
+                      <div className="truncate text-[14px] font-semibold">
+                        {r.ownerName}
+                      </div>
+                      <div className="mt-0.5 text-[11.5px] leading-[14px] text-faint">
+                        {r.isYou ? "Your team" : `Team ${r.rosterId}`}
+                      </div>
+                    </td>
+                    <td className="pr-[18px] text-right font-semibold tabular-nums">
+                      {r.wins}-{r.losses}
+                      {r.ties ? `-${r.ties}` : ""}
+                    </td>
+                    <td className="pr-[18px] text-right tabular-nums">
+                      {r.pointsFor.toLocaleString(undefined, {
+                        maximumFractionDigits: 0,
+                      })}
+                    </td>
+                    <td className="pr-[18px] text-right tabular-nums text-muted">
+                      {r.pointsAgainst.toLocaleString(undefined, {
+                        maximumFractionDigits: 0,
+                      })}
+                    </td>
+                    <td
+                      className="pr-[18px] text-right text-faint"
+                      title="Streak unavailable"
+                    >
+                      —
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </Card>
       )}
     </Async>
-  );
-}
-
-function StandingRowView({ r, zebra }: { r: StandingRow; zebra: boolean }) {
-  return (
-    <div
-      className={cn(
-        "flex items-center gap-3 border-l-2 px-5 py-3",
-        r.isYou
-          ? "border-accent bg-accent-tint"
-          : cn("border-transparent", zebra && "bg-surface-2/35"),
-      )}
-    >
-      <span className={cn("w-6 font-bold tabular-nums", r.isYou ? "text-accent" : "text-muted")}>{r.rank}</span>
-      <span className="flex min-w-0 flex-1 items-center gap-2 truncate">
-        <span className={r.isYou ? "font-semibold" : "font-medium"}>{r.ownerName}</span>
-        {r.isYou && <span className="text-xs font-semibold text-accent">you</span>}
-      </span>
-      <span className="w-16 text-right font-semibold tabular-nums">
-        {r.wins}-{r.losses}
-        {r.ties ? `-${r.ties}` : ""}
-      </span>
-      <span className="w-20 text-right tabular-nums">{r.pointsFor.toFixed(1)}</span>
-      <span className="w-20 text-right tabular-nums text-muted">{r.pointsAgainst.toFixed(1)}</span>
-    </div>
   );
 }

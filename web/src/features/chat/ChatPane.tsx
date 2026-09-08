@@ -46,7 +46,10 @@ export function ChatPane() {
 
   // Keep the newest message in view.
   useEffect(() => {
-    listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
+    listRef.current?.scrollTo({
+      top: listRef.current.scrollHeight,
+      behavior: "smooth",
+    });
   }, [messages, busy]);
 
   async function refreshConvos() {
@@ -65,7 +68,9 @@ export function ChatPane() {
     try {
       const convo = await api.conversation(id);
       if (viewToken.current !== token) return; // switched threads while loading
-      setMessages(convo.messages.map((m) => ({ role: m.role, content: m.content })));
+      setMessages(
+        convo.messages.map((m) => ({ role: m.role, content: m.content })),
+      );
     } catch (e) {
       if (viewToken.current !== token) return;
       setError((e as Error).message);
@@ -121,7 +126,8 @@ export function ChatPane() {
   }
 
   async function remove(id: string) {
-    if (!window.confirm("Delete this conversation? This can't be undone.")) return;
+    if (!window.confirm("Delete this conversation? This can't be undone."))
+      return;
     try {
       await api.deleteConversation(id);
       if (id === activeId) newChat();
@@ -132,36 +138,52 @@ export function ChatPane() {
   }
 
   return (
-    <div className="flex h-[72vh] overflow-hidden rounded-xl border border-border bg-surface">
+    <div className="chat-layout grid min-h-[560px] gap-4 md:h-[660px] md:grid-cols-[300px_minmax(0,1fr)]">
       {/* Sidebar */}
-      <aside className="flex w-52 shrink-0 flex-col border-r border-border">
-        <div className="p-2">
+      <aside className="flex max-h-48 flex-col overflow-hidden rounded-[14px] border border-border bg-surface md:max-h-none">
+        <div className="p-[10px]">
           <Button variant="primary" onClick={newChat} className="w-full">
             + New chat
           </Button>
         </div>
-        <div className="flex-1 overflow-y-auto px-2 pb-2">
-          {convos.length === 0 && <p className="px-2 py-1 text-xs text-faint">No conversations yet.</p>}
+        <div className="flex-1 overflow-y-auto pb-2">
+          {convos.length === 0 && (
+            <p className="px-2 py-1 text-xs text-faint">
+              No conversations yet.
+            </p>
+          )}
           {convos.map((c) => (
             <div
               key={c.id}
               className={cn(
-                "group flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm",
-                c.id === activeId ? "bg-surface-2 text-text" : "text-muted hover:bg-surface-2/60",
+                "group flex items-center gap-1 border-l-[3px] px-[11px] py-[11px] text-[13px]",
+                c.id === activeId
+                  ? "border-accent bg-surface-2 text-text"
+                  : "border-transparent text-muted hover:bg-surface-2",
               )}
             >
-              <button className="flex-1 truncate text-left" onClick={() => void openConvo(c.id)} title={c.title}>
+              <button
+                className="flex-1 truncate text-left"
+                onClick={() => void openConvo(c.id)}
+                title={c.title}
+              >
                 {c.title}
+                <span className="mt-0.5 block text-[11px] leading-[13px] text-faint">
+                  {new Date(c.updatedAt).toLocaleDateString(undefined, {
+                    month: "short",
+                    day: "numeric",
+                  })}
+                </span>
               </button>
               <button
-                className="hidden text-faint hover:text-text group-hover:block"
+                className="text-faint hover:text-text opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100"
                 onClick={() => void rename(c.id)}
                 title="Rename"
               >
                 ✎
               </button>
               <button
-                className="hidden text-faint hover:text-danger group-hover:block"
+                className="text-faint hover:text-danger opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100"
                 onClick={() => void remove(c.id)}
                 title="Delete"
               >
@@ -173,13 +195,19 @@ export function ChatPane() {
       </aside>
 
       {/* Thread */}
-      <div className="flex min-w-0 flex-1 flex-col p-3">
-        <div ref={listRef} className="flex flex-1 flex-col gap-2.5 overflow-y-auto p-1">
-          {loadingThread && <p className="px-1 py-2 text-sm text-muted">Loading…</p>}
+      <div className="flex min-h-[440px] min-w-0 flex-col overflow-hidden rounded-[14px] border border-border bg-surface">
+        <div
+          ref={listRef}
+          className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-5"
+        >
+          {loadingThread && (
+            <p className="px-1 py-2 text-sm text-muted">Loading…</p>
+          )}
           {!loadingThread && messages.length === 0 && (
             <p className="px-1 py-2 text-sm leading-relaxed text-muted">
-              Ask SleepBot about your league — rosters, waivers, trades, start/sit. Conversations are
-              saved; pick one on the left or start a new chat. Writes stay confirm-first.
+              Ask SleepBot about your league — rosters, waivers, trades,
+              start/sit. Conversations are saved; pick one on the left or start
+              a new chat. Writes stay confirm-first.
             </p>
           )}
           {messages.map((m, i) => (
@@ -190,8 +218,9 @@ export function ChatPane() {
           {busy && <TypingIndicator />}
           {error && <p className="px-1 text-sm text-danger">⚠ {error}</p>}
         </div>
-        <div className="mt-3 flex items-end gap-2">
+        <div className="flex items-end gap-[10px] border-t border-border p-[14px]">
           <textarea
+            aria-label="Message SleepBot"
             value={input}
             placeholder="Message SleepBot…"
             onChange={(e) => setInput(e.target.value)}
@@ -204,7 +233,11 @@ export function ChatPane() {
             rows={1}
             className="h-10 flex-1 resize-none rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-text placeholder:text-faint focus:border-accent/40 focus:outline-none focus:ring-2 focus:ring-accent/40"
           />
-          <Button variant="primary" onClick={() => void send()} disabled={busy || !input.trim()}>
+          <Button
+            variant="primary"
+            onClick={() => void send()}
+            disabled={busy || !input.trim()}
+          >
             Send
           </Button>
         </div>

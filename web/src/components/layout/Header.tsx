@@ -1,50 +1,9 @@
 import { api, useAsync } from "../../lib/api";
 import { cycleTheme, useTheme } from "../../lib/theme";
 import type { League } from "../../lib/types";
-import { Badge, Button, Select } from "../ui";
+import { Button, Select } from "../ui";
 
-/** Cycles System → Light → Dark; the icon reflects the current preference. */
-function ThemeToggle() {
-  const theme = useTheme();
-  const label = theme === "system" ? "System" : theme === "light" ? "Light" : "Dark";
-  return (
-    <button
-      type="button"
-      onClick={cycleTheme}
-      title={`Theme: ${label}`}
-      aria-label={`Theme: ${label} — click to change`}
-      className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface-2 text-muted transition-colors hover:border-border-strong hover:text-text"
-    >
-      {theme === "light" ? (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <circle cx="12" cy="12" r="4" />
-          <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
-        </svg>
-      ) : theme === "dark" ? (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
-        </svg>
-      ) : (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="2" y="4" width="20" height="13" rx="2" />
-          <path d="M8 21h8M12 17v4" />
-        </svg>
-      )}
-    </button>
-  );
-}
-
-function AuthBadge({ leagueId }: { leagueId: string }) {
-  const s = useAsync(() => api.auth(leagueId), [leagueId]);
-  if (s.loading || !s.data) return null;
-  const ok = s.data.state === "ok";
-  return (
-    <Badge variant={ok ? "ok" : "warn"} className="hidden sm:inline-flex">
-      {ok ? `writes ready${s.data.user ? ` · ${s.data.user}` : ""}` : "writes: needs-reauth"}
-    </Badge>
-  );
-}
-
+/** Account controls remain available without crowding the mockup's header. */
 export function Header({
   leagues,
   active,
@@ -54,34 +13,59 @@ export function Header({
   leagues: League[];
   active: string | null;
   onSelect: (id: string) => void;
-  /** When set (i.e. a login session is active), render a Log out button. */
   onLogout?: () => void;
 }) {
+  const theme = useTheme();
+  const { data: status } = useAsync(
+    () => (active ? api.auth(active) : Promise.resolve(null)),
+    [active],
+  );
+  const ready = status?.state === "ok";
   return (
-    <header className="flex items-center justify-between gap-3 pb-3 pt-4">
-      <div className="flex items-center gap-2.5">
-        <span className="text-2xl leading-none">🏈</span>
-        <h1 className="text-lg font-bold tracking-tight">SleepBot</h1>
+    <header className="flex h-[68px] items-center justify-between gap-3 border-b border-border bg-surface px-4 sm:px-7">
+      <div className="flex shrink-0 items-center gap-[9px]">
+        <span className="text-[22px] leading-[22px]">🏈</span>
+        <h1 className="text-[18px] font-bold leading-[22px]">SleepBot</h1>
       </div>
-      <div className="flex items-center gap-2.5">
-        {leagues.length > 0 && active && (
-          <>
-            <Select value={active} onChange={(e) => onSelect(e.target.value)}>
-              {leagues.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.id}
-                </option>
-              ))}
-            </Select>
-            <AuthBadge leagueId={active} />
-          </>
+      <div className="flex min-w-0 items-center gap-2.5">
+        {active && (
+          <Select
+            aria-label="League"
+            className="h-8! min-w-0 max-w-[190px] text-[13px]"
+            value={active}
+            onChange={(e) => onSelect(e.target.value)}
+          >
+            {leagues.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.id}
+              </option>
+            ))}
+          </Select>
         )}
-        <ThemeToggle />
-        {onLogout && (
-          <Button onClick={onLogout} className="hidden sm:inline-flex">
-            Log out
-          </Button>
+        {status && (
+          <span
+            className={`hidden items-center gap-[6px] whitespace-nowrap rounded-full border border-border bg-surface-2 px-[11px] py-[5px] text-xs font-medium sm:inline-flex ${ready ? "text-ok" : "text-warn"}`}
+          >
+            {ready && (
+              <img src="/assets/status-ready.svg" width={7} height={7} alt="" />
+            )}
+            {ready
+              ? `writes ready${status.user ? ` · ${status.user}` : ""}`
+              : "writes: needs-reauth"}
+          </span>
         )}
+        <details className="relative shrink-0">
+          <summary
+            aria-label="Account and appearance"
+            className="flex size-8 cursor-pointer list-none items-center justify-center rounded-full bg-accent text-[13px] font-bold text-on-accent [&::-webkit-details-marker]:hidden"
+          >
+            {status?.user?.slice(0, 1).toUpperCase() || "S"}
+          </summary>
+          <div className="absolute right-0 top-10 z-40 flex w-44 flex-col gap-2 rounded-xl border border-border bg-surface p-3 shadow-lg">
+            <Button onClick={cycleTheme}>Theme: {theme}</Button>
+            {onLogout && <Button onClick={onLogout}>Log out</Button>}
+          </div>
+        </details>
       </div>
     </header>
   );

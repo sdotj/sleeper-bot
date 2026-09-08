@@ -13,7 +13,7 @@
   "sleepbot.crypto:src/crypto": "658da927d8934911",
   "sleepbot.draft:src/draft": "841ca5bda6d93333",
   "sleepbot.gate:src/gate": "519fcf345da423b8",
-  "sleepbot.gui:web": "d0eb4d91308afe89",
+  "sleepbot.gui:web": "1b0f1fc07e37d43e",
   "sleepbot.history:src/history": "1b98b1160ab955dc",
   "sleepbot.notify:src/notify": "488df501b8ae3046",
   "sleepbot.rules:src/rules": "f1399b8402329507",
