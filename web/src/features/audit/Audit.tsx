@@ -8,6 +8,7 @@ import {
   EmptyState,
 } from "../../components/ui";
 import { cn } from "../../lib/cn";
+import { PendingApprovals } from "./PendingApprovals";
 
 const STATUS = {
   proposed: "accent",
@@ -19,10 +20,12 @@ const STATUS = {
 export function Audit({ leagueId }: { leagueId: string }) {
   const state = useAsync(() => api.audit(leagueId), [leagueId]);
   return (
-    <Async state={state}>
-      {(events) => (
-        <Card className="overflow-hidden">
-          <CardHeader title="Activity log" right={leagueId} />
+    <>
+      <PendingApprovals leagueId={leagueId} />
+      <Async state={state}>
+        {(events) => (
+          <Card className="overflow-hidden">
+            <CardHeader title="Activity log" right={leagueId} />
           {!events.length ? (
             <EmptyState>No actions recorded yet.</EmptyState>
           ) : (
@@ -80,9 +83,10 @@ export function Audit({ leagueId }: { leagueId: string }) {
                 </tbody>
               </table>
             </div>
-          )}
-        </Card>
-      )}
-    </Async>
+            )}
+          </Card>
+        )}
+      </Async>
+    </>
   );
 }

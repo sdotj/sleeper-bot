@@ -245,6 +245,26 @@ export class ActionPipeline {
     return this.deps.pending.list(leagueId);
   }
 
+  /** Cancel a pending draft (user declined it in the GUI). Idempotent-ish. */
+  async cancel(actionId: string): Promise<ProposedAction> {
+    const action = await this.deps.pending.get(actionId);
+    if (!action) throw new Error(`no action with id ${actionId}`);
+    if (action.status !== "pending") {
+      throw new Error(`action ${actionId} is not pending (status: ${action.status}) — nothing to cancel`);
+    }
+    action.status = "rejected";
+    await this.deps.pending.put(action);
+    await this.deps.audit.record({
+      actionId,
+      leagueId: action.leagueId,
+      type: "rejected",
+      actor: "user",
+      summary: `${action.kind} cancelled by the user`,
+      detail: { cancelled: true },
+    });
+    return action;
+  }
+
   /** Evaluate an action against the rules without storing/executing it (agent use). */
   async evaluate(leagueId: string, kind: ActionKind, payload: WritePayload): Promise<RuleVerdict> {
     const adapter = this.deps.adapterFor(leagueId);

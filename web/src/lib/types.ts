@@ -67,6 +67,19 @@ export interface AuditEvent {
   summary: string;
 }
 
+// A pending write action awaiting approval (src/actions/ProposedAction.ts),
+// enriched by the API with a name-resolved summary + confirm note.
+export interface PendingAction {
+  id: string;
+  leagueId: string;
+  kind: "trade" | "waiver_claim" | "add_drop";
+  status: "pending" | "executing" | "executed" | "failed" | "rejected";
+  createdMs: number;
+  summary: string;
+  note: string;
+  verdict: { warnings: string[]; blockedReasons: string[] };
+}
+
 // Settings: the editable leagues config (mirrors src/config/schema.ts) and the
 // Sleeper write-token status (src/core/context.ts).
 

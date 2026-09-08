@@ -132,7 +132,7 @@ export async function buildApiServer(ops: SleepBotOperations): Promise<FastifyIn
   app.get("/api/audit", h((req) => ops.getAuditLog((req.query as { leagueId?: string }).leagueId)));
   app.get(
     "/api/pending",
-    h((req) => ops.listPendingActions((req.query as { leagueId?: string }).leagueId)),
+    h((req) => ops.pendingActionsView((req.query as { leagueId?: string }).leagueId)),
   );
 
   // --- writes (confirm-by-default) -----------------------------------------
@@ -151,6 +151,10 @@ export async function buildApiServer(ops: SleepBotOperations): Promise<FastifyIn
   app.post(
     "/api/actions/:id/execute",
     h((req) => ops.executeAction(id(req))),
+  );
+  app.post(
+    "/api/actions/:id/cancel",
+    h((req) => ops.cancelAction(id(req))),
   );
 
   // --- chat (server-side Claude tool-use loop) -----------------------------

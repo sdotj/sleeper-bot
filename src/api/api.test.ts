@@ -57,4 +57,21 @@ describe("API routes", () => {
     });
     expect(res.json().note).toMatch(/DRAFT/);
   });
+
+  it("lists pending approvals and cancels one (audit #8 GUI approval)", async () => {
+    const app = await buildApiServer(
+      ops({
+        pendingActionsView: async (leagueId?: string) => [
+          { id: "a1", leagueId, kind: "add_drop", status: "pending", summary: "Add Star", verdict: { warnings: [], blockedReasons: [] } },
+        ],
+        cancelAction: async () => ({ id: "a1", status: "rejected" }),
+      }),
+    );
+    const list = await app.inject({ method: "GET", url: "/api/pending?leagueId=L1" });
+    expect(list.json()[0]).toMatchObject({ id: "a1", summary: "Add Star" });
+
+    const cancel = await app.inject({ method: "POST", url: "/api/actions/a1/cancel" });
+    expect(cancel.statusCode).toBe(200);
+    expect(cancel.json().status).toBe("rejected");
+  });
 });

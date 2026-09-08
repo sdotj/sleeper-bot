@@ -155,8 +155,56 @@ export class SleepBotOperations {
   executeAction(actionId: string) {
     return this.ctx.pipeline.execute(actionId, "user");
   }
+  cancelAction(actionId: string) {
+    return this.ctx.pipeline.cancel(actionId);
+  }
   listPendingActions(leagueId?: string) {
     return this.ctx.pipeline.listPending(leagueId);
+  }
+
+  /**
+   * Pending drafts enriched for the GUI approval list (dec.gui-architecture):
+   * each action plus a human-readable one-line summary (player NAMES, not ids)
+   * and the confirm-note. This is what the web app renders with Approve/Cancel.
+   */
+  async pendingActionsView(leagueId?: string) {
+    const actions = await this.ctx.pipeline.listPending(leagueId);
+    return Promise.all(
+      actions.map(async (a) => ({
+        ...proposalOutcome(a),
+        summary: await this.describeAction(a),
+      })),
+    );
+  }
+
+  /** One-line, name-resolved description of a write action (for the GUI/audit). */
+  private async describeAction(a: ProposedAction): Promise<string> {
+    const adapter = this.ctx.adapterFor(a.leagueId);
+    const ids =
+      a.kind === "trade"
+        ? [...(a.payload as TradePayload).sendPlayerIds, ...(a.payload as TradePayload).receivePlayerIds]
+        : [
+            (a.payload as WaiverClaimPayload | AddDropPayload).addPlayerId,
+            (a.payload as WaiverClaimPayload | AddDropPayload).dropPlayerId,
+          ].filter((x): x is string => Boolean(x));
+    const refs = ids.length ? await adapter.resolvePlayers(ids) : [];
+    const name = (id?: string) => (id ? (refs.find((r) => r.playerId === id)?.name ?? id) : undefined);
+
+    if (a.kind === "trade") {
+      const p = a.payload as TradePayload;
+      const send = p.sendPlayerIds.map(name).join(", ") || "—";
+      const recv = p.receivePlayerIds.map(name).join(", ") || "—";
+      return `Trade with roster ${p.toRosterId}: send ${send}, get ${recv}`;
+    }
+    if (a.kind === "waiver_claim") {
+      const p = a.payload as WaiverClaimPayload;
+      const drop = p.dropPlayerId ? `, drop ${name(p.dropPlayerId)}` : "";
+      const bid = p.faabBid != null ? ` ($${p.faabBid})` : "";
+      return `Waiver: add ${name(p.addPlayerId)}${bid}${drop}`;
+    }
+    const p = a.payload as AddDropPayload;
+    const drop = p.dropPlayerId ? `, drop ${name(p.dropPlayerId)}` : "";
+    return `Add ${name(p.addPlayerId)}${drop}`;
   }
 
   // --- settings: UI-editable config + secrets (dec.ui-config-editing) -------

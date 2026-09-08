@@ -13,6 +13,7 @@ import type {
   League,
   Matchup,
   MemoryNote,
+  PendingAction,
   Roster,
   SleepBotConfigDoc,
   SleeperTokenStatus,
@@ -57,6 +58,11 @@ export const api = {
     get<Matchup[]>(`/api/leagues/${id}/matchups${week ? `?week=${week}` : ""}`),
   auth: (id: string) => get<AuthStatus>(`/api/leagues/${id}/auth`),
   audit: (id: string) => get<AuditEvent[]>(`/api/audit?leagueId=${encodeURIComponent(id)}`),
+
+  // --- pending write actions (confirm-by-default approval) ---
+  pending: (id: string) => get<PendingAction[]>(`/api/pending?leagueId=${encodeURIComponent(id)}`),
+  executeAction: (id: string) => send<{ status: string }>("POST", `/api/actions/${id}/execute`),
+  cancelAction: (id: string) => send<{ status: string }>("POST", `/api/actions/${id}/cancel`),
   drafts: (id: string) => get<Draft[]>(`/api/leagues/${id}/drafts`),
   draftBoard: (id: string, draftId: string, yourRosterId?: number) =>
     get<DraftBoard>(
