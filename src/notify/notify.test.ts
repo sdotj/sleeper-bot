@@ -111,6 +111,45 @@ describe("Notifier", () => {
     expect(perform).toHaveBeenCalledOnce();
   });
 
+  it("holds the claim through the durable delete so a redelivered tap can't double-send (audit #2)", async () => {
+    const { notifier, store, perform } = makeNotifier();
+    await notifier.propose(notice(), "approve");
+    // Gate store.delete so a second callback overlaps the first while it still
+    // holds the in-process claim.
+    const realDelete = store.delete.bind(store);
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    vi.spyOn(store, "delete").mockImplementation(async (c, i) => {
+      await gate;
+      return realDelete(c, i);
+    });
+    const first = notifier.handleCallback("ok:a1", "cq1");
+    await new Promise((r) => setTimeout(r, 0)); // let `first` park at the gated delete
+    const second = notifier.handleCallback("ok:a1", "cq2"); // arrives mid-flight
+    release();
+    await Promise.all([first, second]);
+    expect(perform).toHaveBeenCalledTimes(1);
+  });
+
+  it("dismisses a tap whose league label was remapped to a new target (audit #5)", async () => {
+    let identity = { platform: "sleeper" as const, platformLeagueId: "SL1" };
+    const telegram = fakeTelegram();
+    const store = new InMemoryStore();
+    const perform = vi.fn(async () => ({ ok: true, message: "sent" }));
+    const notifier = new Notifier({
+      telegram: telegram as unknown as TelegramClient,
+      store,
+      chatId: "555",
+      perform,
+      leagueIdentity: () => identity,
+    });
+    await notifier.propose(notice(), "approve");
+    identity = { platform: "sleeper", platformLeagueId: "DIFFERENT" }; // config remap
+    await notifier.handleCallback("ok:a1", "cq9");
+    expect(perform).not.toHaveBeenCalled();
+    expect(await store.get("agent_outbox", "a1")).toBeNull(); // dismissed
+  });
+
   it("rejects an ovr: tap on an approve-mode proposal without performing (audit #11)", async () => {
     const { notifier, store, perform, telegram } = makeNotifier();
     await notifier.propose(notice(), "approve"); // stored mode = approve

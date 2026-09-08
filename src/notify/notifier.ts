@@ -1,7 +1,13 @@
-import type { WritePayload } from "../adapters/LeagueAdapter.js";
+import type { Platform, WritePayload } from "../adapters/LeagueAdapter.js";
 import type { Store } from "../audit/index.js";
 import type { ActionKind } from "../rules/index.js";
 import { TelegramClient, type InlineButton, type TelegramUpdate } from "./telegramClient.js";
+
+/** The immutable platform target a league label maps to (audit #5). */
+export interface LeagueIdentity {
+  platform: Platform;
+  platformLeagueId: string;
+}
 
 /** How an awaiting proposal is decided by a tap. */
 export type ProposalMode = "approve" | "override";
@@ -38,6 +44,8 @@ interface OutboxRecord {
   kind: ActionKind;
   payload: WritePayload;
   mode: ProposalMode;
+  /** The immutable target snapshot at propose time (audit #5). */
+  identity?: LeagueIdentity;
   chatMessageId?: number;
   createdMs: number;
 }
@@ -47,6 +55,8 @@ export interface NotifierDeps {
   store: Store;
   chatId: string;
   perform: PerformFn;
+  /** Current immutable target for a league label, to detect a remap (audit #5). */
+  leagueIdentity?: (leagueId: string) => LeagueIdentity;
 }
 
 /**
@@ -98,6 +108,7 @@ export class Notifier {
       kind: notice.kind,
       payload: notice.payload,
       mode,
+      identity: this.deps.leagueIdentity?.(notice.leagueId),
       chatMessageId: message_id,
       createdMs: Date.now(),
     };
@@ -122,30 +133,51 @@ export class Notifier {
       await this.deps.telegram.answerCallbackQuery(callbackQueryId, "That action doesn't match this proposal.");
       return;
     }
+    // Reject an unrecognized verb WITHOUT touching the record (audit #11: don't
+    // drop the outbox entry on an unknown verb).
+    if (verb !== "no" && verb !== "ok" && verb !== "ovr") {
+      await this.deps.telegram.answerCallbackQuery(callbackQueryId, "Unknown action.");
+      return;
+    }
 
     let outcome: string;
     if (verb === "no") {
       outcome = "❌ Dismissed — nothing sent.";
-    } else if (verb === "ok" || verb === "ovr") {
-      // A second tap arriving mid-execute must not perform the write again.
+      await this.deps.store.delete(Notifier.COLLECTION, rec.id);
+    } else {
+      // ok / ovr — an actual write. Hold the in-process claim across BOTH the
+      // perform AND the durable delete, so a redelivered callback that arrives
+      // mid-flight can't perform it a second time (audit #2/#4).
       if (this.inFlight.has(rec.id)) {
         await this.deps.telegram.answerCallbackQuery(callbackQueryId, "Already processing…");
         return;
       }
       this.inFlight.add(rec.id);
       try {
-        const r = await this.deps.perform(rec.leagueId, rec.kind, rec.payload, { override: verb === "ovr" });
-        outcome = r.ok ? `✅ Executed — ${r.message}` : `⚠️ ${r.message}`;
+        // Target-binding: the label must still map to the approved platform/league
+        // (audit #5) — a remap mustn't redirect this tap to a different target.
+        const current = this.deps.leagueIdentity?.(rec.leagueId);
+        if (
+          rec.identity &&
+          current &&
+          (current.platform !== rec.identity.platform || current.platformLeagueId !== rec.identity.platformLeagueId)
+        ) {
+          outcome = "⚠️ Target changed since this was proposed — dismissed. Re-propose it.";
+          await this.deps.store.delete(Notifier.COLLECTION, rec.id);
+        } else {
+          const r = await this.deps.perform(rec.leagueId, rec.kind, rec.payload, { override: verb === "ovr" });
+          outcome = r.ok ? `✅ Executed — ${r.message}` : `⚠️ ${r.message}`;
+          // Consume the durable record WHILE the claim is still held.
+          await this.deps.store.delete(Notifier.COLLECTION, rec.id);
+        }
       } catch (err) {
+        // Ambiguous failure: retain the record (don't delete) so it isn't lost.
         outcome = `⚠️ Failed — ${(err as Error).message}`;
       } finally {
         this.inFlight.delete(rec.id);
       }
-    } else {
-      outcome = "Unknown action.";
     }
 
-    await this.deps.store.delete(Notifier.COLLECTION, rec.id);
     if (rec.chatMessageId != null) {
       await this.deps.telegram.editMessageText(this.deps.chatId, rec.chatMessageId, outcome).catch(() => {});
     }

@@ -114,13 +114,19 @@ export async function buildAppContext(config: ConfigRegistry, storeOverride?: St
   let tokenSource = resolved.source;
   const sleeperSession = new SleeperSessionProvider({ token: resolved.token });
 
-  // Version stamp for cross-instance config/token invalidation (audit #14).
-  // Every mutation bumps a monotonic stamp in the store; refresh() reloads when
-  // the stored stamp is ahead of what this process last applied.
+  // Version stamp for cross-instance config/token invalidation (audit #14). Each
+  // mutation increments a counter in the store; refresh() reloads when the stored
+  // counter DIFFERS from what this process last applied. We increment off the
+  // stored value (not a wall clock) and compare by equality, so a peer's newer
+  // write is always detected — Date.now() could collide in the same millisecond
+  // and be missed (audit #7). A true multi-writer story still needs a
+  // store-atomic CAS; deploys run a single writer (see docs/deploy.md).
   let appliedVersion = (await store.get<{ version?: number }>("meta", "config_version"))?.version ?? 0;
   const bumpVersion = async (): Promise<void> => {
-    appliedVersion = Math.max(appliedVersion + 1, Date.now());
-    await store.put("meta", "config_version", { version: appliedVersion });
+    const stored = (await store.get<{ version?: number }>("meta", "config_version"))?.version ?? 0;
+    const next = Math.max(stored, appliedVersion) + 1;
+    await store.put("meta", "config_version", { version: next });
+    appliedVersion = next;
   };
 
   const adapters = new Map<string, WriteableLeagueAdapter>();
@@ -133,7 +139,40 @@ export async function buildAppContext(config: ConfigRegistry, storeOverride?: St
     return adapter;
   };
 
-  const pipeline = new ActionPipeline({ rules, audit, pending, valueFor, adapterFor });
+  // The immutable platform identity a league label currently maps to (audit #5).
+  const leagueIdentity = (leagueId: string) => {
+    const e = config.get(leagueId);
+    return {
+      platform: e.platform,
+      platformLeagueId: e.platform === "espn" ? (e.espn?.leagueId ?? "") : (e.sleeper?.leagueId ?? ""),
+    };
+  };
+
+  // Cross-instance refresh (audit #14). Extracted so the pipeline can call it on
+  // every write path — covering MCP/Telegram, not just the ops facade.
+  const refresh = async (): Promise<void> => {
+    const stored = (await store.get<{ version?: number }>("meta", "config_version"))?.version ?? 0;
+    if (stored === appliedVersion) return; // in sync (or we are the writer)
+    const cfg = await store.get<unknown>("config", "current");
+    if (cfg != null) config.applyConfig(ConfigRegistry.validate(cfg, "stored config"));
+    const tok = await resolveSleeperToken(store);
+    sleeperSession.setToken(tok.token);
+    tokenSource = tok.source;
+    adapters.clear();
+    appliedVersion = stored;
+    console.error(`[context] refreshed config + token to version ${stored} (changed by another instance).`);
+  };
+
+  const pipeline = new ActionPipeline({
+    rules,
+    audit,
+    pending,
+    valueFor,
+    adapterFor,
+    leagueIdentity,
+    refresh,
+    configVersion: () => appliedVersion,
+  });
   const draft = new DraftAssistant({ adapterFor, valueFor });
   const chatHistory = new ChatHistory(store);
   const memory = new MemoryStore(store);
@@ -155,18 +194,7 @@ export async function buildAppContext(config: ConfigRegistry, storeOverride?: St
       adapters.clear(); // rebuild against the new config (they share sleeperSession)
     },
 
-    async refresh() {
-      const stored = (await store.get<{ version?: number }>("meta", "config_version"))?.version ?? 0;
-      if (stored <= appliedVersion) return; // already current (or we're the writer)
-      const cfg = await store.get<unknown>("config", "current");
-      if (cfg != null) config.applyConfig(ConfigRegistry.validate(cfg, "stored config"));
-      const tok = await resolveSleeperToken(store);
-      sleeperSession.setToken(tok.token);
-      tokenSource = tok.source;
-      adapters.clear();
-      appliedVersion = stored;
-      console.error(`[context] refreshed config + token to version ${stored} (changed by another instance).`);
-    },
+    refresh,
 
     async saveConfig(parsed: unknown) {
       const validated = ConfigRegistry.validate(parsed, "submitted config");

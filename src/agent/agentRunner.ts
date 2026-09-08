@@ -8,6 +8,29 @@ import { AGENT_TOOLS, dispatchAgentTool, type Recommendation } from "./agentTool
 
 export type Autonomy = "manual" | "auto";
 
+/** What routing one recommendation resulted in (audit #9). */
+export type RouteOutcome = "executed" | "proposed" | "rejected" | "failed";
+
+/** Per-league sweep tally with each outcome counted separately (audit #9/#17). */
+export interface SweepOutcome {
+  recommended: number;
+  /** Auto-executed writes that the platform accepted. */
+  executed: number;
+  /** Recommendations sent to Telegram awaiting a tap. */
+  proposed: number;
+  /** Blocked at auto re-evaluation (not sent, not an error). */
+  rejected: number;
+  /** Errored while auto-executing or routing. */
+  failed: number;
+  /** executed + proposed — successfully handled, for back-compat callers. */
+  routed: number;
+  skipped?: string;
+}
+
+function emptyTally(): SweepOutcome {
+  return { recommended: 0, executed: 0, proposed: 0, rejected: 0, failed: 0, routed: 0 };
+}
+
 export interface AgentDeps {
   ctx: AppContext;
   ops: SleepBotOperations;
@@ -26,34 +49,45 @@ export interface AgentDeps {
 export class AgentRunner {
   constructor(private readonly deps: AgentDeps) {}
 
-  async sweepLeague(
-    leagueId: string,
-    autonomy: Autonomy,
-  ): Promise<{ recommended: number; routed: number; failed: number; skipped?: string }> {
-    // Pick up config/token changes another instance may have written (audit #14).
-    await this.deps.ctx.refresh().catch(() => {});
+  async sweepLeague(leagueId: string, _autonomyIgnored?: Autonomy): Promise<SweepOutcome> {
+    // Fail CLOSED on refresh error: never sweep on a policy we couldn't confirm
+    // is current (audit #4).
+    try {
+      await this.deps.ctx.refresh();
+    } catch (err) {
+      return { ...emptyTally(), skipped: `config refresh failed (failing closed): ${(err as Error).message}` };
+    }
+
+    // Read enabled + autonomy FRESH after the refresh — not from a value captured
+    // before it — so a disable/downgrade during the sweep is honored (audit #4).
+    const entry = this.deps.ctx.config.get(leagueId);
+    if (!entry.agent?.enabled) {
+      return { ...emptyTally(), skipped: "agent disabled for this league" };
+    }
+
     const myRoster = await this.deps.ops.getMyRoster(leagueId);
     if (!myRoster) {
-      return { recommended: 0, routed: 0, failed: 0, skipped: "no roster resolved (set sleeper.username)" };
+      return { ...emptyTally(), skipped: "no roster resolved (set sleeper.username)" };
     }
     const gather = this.deps.gather ?? ((lid, rid) => this.gather(lid, rid));
     const recs = await gather(leagueId, myRoster.rosterId);
 
-    // Route each recommendation, but DON'T silently swallow failures and then
-    // report every rec as if it landed (audit #17). Count routed vs failed and
-    // log each failure so a broken pipeline/Telegram delivery is visible.
-    let routed = 0;
-    let failed = 0;
+    // Aggregate typed outcomes separately (audit #9/#17) — never count a caught
+    // failure as a delivered/executed action.
+    const tally = emptyTally();
+    tally.recommended = recs.length;
     for (const rec of recs) {
+      let outcome: RouteOutcome;
       try {
-        await this.route(leagueId, autonomy, rec);
-        routed++;
+        outcome = await this.route(leagueId, rec);
       } catch (err) {
-        failed++;
+        outcome = "failed";
         console.error(`[agent] routing a ${rec.kind} in ${leagueId} failed: ${(err as Error).message}`);
       }
+      tally[outcome]++;
     }
-    return { recommended: recs.length, routed, failed };
+    tally.routed = tally.executed + tally.proposed;
+    return tally;
   }
 
   // --- reasoning: Claude tool loop that captures recommendations --------------
@@ -107,7 +141,20 @@ Keep going until you've made your recommendations (or decided on none), then sto
 
   // --- routing: rules verdict -> auto / approve / override --------------------
 
-  private async route(leagueId: string, autonomy: Autonomy, rec: Recommendation): Promise<void> {
+  private async route(leagueId: string, rec: Recommendation): Promise<RouteOutcome> {
+    // Re-confirm the policy IMMEDIATELY before any automated write (audit #4):
+    // the reasoning phase is long and config may have changed. Fail closed —
+    // a refresh error downgrades this write to a manual approval.
+    let policyFresh = true;
+    try {
+      await this.deps.ctx.refresh();
+    } catch {
+      policyFresh = false;
+    }
+    const entry = this.deps.ctx.config.get(leagueId);
+    const autoAllowed =
+      policyFresh && !!entry.agent?.enabled && (entry.agent?.autonomy ?? "manual") === "auto";
+
     const verdict = await this.deps.ctx.pipeline.evaluate(leagueId, rec.kind, rec.payload);
     const id = randomUUID();
     const summary = await this.summarize(leagueId, rec);
@@ -126,25 +173,34 @@ Keep going until you've made your recommendations (or decided on none), then sto
         { id, leagueId, kind: rec.kind, payload: rec.payload, summary, warnings: verdict.warnings, blockedReasons: verdict.blockedReasons },
         "override",
       );
-      return;
+      return "proposed";
     }
 
     const clean = verdict.warnings.length === 0;
-    if (autonomy === "auto" && clean) {
+    if (autoAllowed && clean) {
+      let a: Awaited<ReturnType<typeof this.deps.ctx.pipeline.perform>>;
       try {
-        const a = await this.deps.ctx.pipeline.perform(leagueId, rec.kind, rec.payload, "auto", { override: false });
-        await this.deps.notifier.info(`✅ Auto-executed: ${summary}${a.result?.message ? ` — ${a.result.message}` : ""}`);
+        a = await this.deps.ctx.pipeline.perform(leagueId, rec.kind, rec.payload, "auto", { override: false });
       } catch (err) {
         await this.deps.notifier.info(`⚠️ Wanted to auto-execute “${summary}” but it failed: ${(err as Error).message}`);
+        return "failed";
       }
-      return;
+      // Only claim success when the write actually executed — perform can return
+      // a non-executed action (e.g. blocked at its own re-evaluation) (audit #9).
+      if (a.status === "executed") {
+        await this.deps.notifier.info(`✅ Auto-executed: ${summary}${a.result?.message ? ` — ${a.result.message}` : ""}`);
+        return "executed";
+      }
+      await this.deps.notifier.info(`⚠️ Auto-execute of “${summary}” did not go through (status: ${a.status}).`);
+      return a.status === "rejected" ? "rejected" : "failed";
     }
 
-    // warned, or manual autonomy → require a Telegram approval
+    // warned, manual, disabled, or refresh-failed → require a Telegram approval
     await this.deps.notifier.propose(
       { id, leagueId, kind: rec.kind, payload: rec.payload, summary, warnings: verdict.warnings, blockedReasons: [] },
       "approve",
     );
+    return "proposed";
   }
 
   /** Human-readable one-liner with player names for the alert + audit. */

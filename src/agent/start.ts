@@ -5,8 +5,8 @@ import { AgentScheduler } from "./scheduler.js";
 
 /** Per-league outcome of a sweep, for the manual-check UI. */
 export interface SweepSummary {
-  leagues: { id: string; recommended: number; failed?: number; skipped?: string }[];
-  /** Total recommendations proposed across all leagues. */
+  leagues: { id: string; recommended: number; executed?: number; proposed?: number; failed?: number; skipped?: string }[];
+  /** Total actions delivered (auto-executed + proposed for approval) across leagues. */
   total: number;
 }
 
@@ -46,6 +46,14 @@ export function startAgent(ctx: AppContext, ops: SleepBotOperations): AgentHandl
     telegram,
     store: ctx.store,
     chatId,
+    // Detect a league-label remap between propose and tap (audit #5).
+    leagueIdentity: (leagueId) => {
+      const e = ctx.config.get(leagueId);
+      return {
+        platform: e.platform,
+        platformLeagueId: e.platform === "espn" ? (e.espn?.leagueId ?? "") : (e.sleeper?.leagueId ?? ""),
+      };
+    },
     perform: async (leagueId, kind, payload, opts) => {
       try {
         const a = await ctx.pipeline.perform(leagueId, kind, payload, "user", opts);
@@ -102,12 +110,21 @@ export function startAgent(ctx: AppContext, ops: SleepBotOperations): AgentHandl
     notifier,
     mode: webhook ? "webhook" : "polling",
     async sweepAll() {
+      // sweepLeague re-reads enabled/autonomy fresh after its own refresh (audit
+      // #4), so we only need the candidate league ids here.
       const results: SweepSummary["leagues"] = [];
-      for (const { id, autonomy } of leagues()) {
-        const r = await runner.sweepLeague(id, autonomy);
-        results.push({ id, recommended: r.recommended, failed: r.failed || undefined, skipped: r.skipped });
+      for (const { id } of leagues()) {
+        const r = await runner.sweepLeague(id);
+        results.push({
+          id,
+          recommended: r.recommended,
+          executed: r.executed || undefined,
+          proposed: r.proposed || undefined,
+          failed: r.failed || undefined,
+          skipped: r.skipped,
+        });
       }
-      return { leagues: results, total: results.reduce((n, r) => n + r.recommended, 0) };
+      return { leagues: results, total: results.reduce((n, r) => n + (r.executed ?? 0) + (r.proposed ?? 0), 0) };
     },
   };
 }

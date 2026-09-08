@@ -27,10 +27,14 @@ export class AgentScheduler {
   }
 
   async tick(): Promise<void> {
-    for (const { id, autonomy } of this.deps.leagues()) {
+    // sweepLeague re-reads enabled/autonomy fresh (audit #4); pass only the id.
+    for (const { id } of this.deps.leagues()) {
       try {
-        const r = await this.deps.runner.sweepLeague(id, autonomy);
-        console.error(`[agent] swept ${id}: ${r.recommended} recommendation(s)${r.skipped ? ` (skipped: ${r.skipped})` : ""}`);
+        const r = await this.deps.runner.sweepLeague(id);
+        console.error(
+          `[agent] swept ${id}: ${r.recommended} rec(s), ${r.executed} executed, ${r.proposed} proposed, ${r.failed} failed` +
+            `${r.skipped ? ` (skipped: ${r.skipped})` : ""}`,
+        );
       } catch (err) {
         console.error(`[agent] sweep ${id} failed: ${(err as Error).message}`);
       }

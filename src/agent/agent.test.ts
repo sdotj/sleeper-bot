@@ -15,11 +15,13 @@ const addDrop: Recommendation = {
   payload: { rosterId: 2, addPlayerId: "x", dropPlayerId: "y" },
 };
 
-function harness(verdict: RuleVerdict) {
+function harness(verdict: RuleVerdict, autonomy: "auto" | "manual" = "auto") {
   const perform = vi.fn(async () => ({ status: "executed", result: { message: "sent" }, verdict } as never));
   const notifier = { propose: vi.fn(async () => {}), info: vi.fn(async () => {}) } as unknown as Notifier;
   const ctx = {
     refresh: vi.fn(async () => {}),
+    // Enabled + autonomy are read FRESH from config after refresh (audit #4).
+    config: { get: () => ({ agent: { enabled: true, autonomy } }) },
     pipeline: { evaluate: vi.fn(async () => verdict), perform },
     audit: { record: vi.fn(async () => ({})) },
     adapterFor: () => ({ resolvePlayers: async () => [{ playerId: "x", name: "Add Guy", position: "WR", team: "SF" }] }),
@@ -31,23 +33,23 @@ function harness(verdict: RuleVerdict) {
 
 describe("AgentRunner routing (3-way autonomy policy)", () => {
   it("auto + clean → executes and notifies, no approval asked", async () => {
-    const { runner, perform, notifier } = harness(allow);
-    await runner.sweepLeague("L1", "auto");
+    const { runner, perform, notifier } = harness(allow, "auto");
+    await runner.sweepLeague("L1");
     expect(perform).toHaveBeenCalledWith("L1", "add_drop", expect.anything(), "auto", { override: false });
     expect(notifier.info).toHaveBeenCalledOnce();
     expect(notifier.propose).not.toHaveBeenCalled();
   });
 
   it("manual + clean → asks for approval (no auto-execute)", async () => {
-    const { runner, perform, notifier } = harness(allow);
-    await runner.sweepLeague("L1", "manual");
+    const { runner, perform, notifier } = harness(allow, "manual");
+    await runner.sweepLeague("L1");
     expect(perform).not.toHaveBeenCalled();
     expect(notifier.propose).toHaveBeenCalledWith(expect.objectContaining({ summary: expect.any(String) }), "approve");
   });
 
   it("auto + warned → still asks for approval (warnings never auto)", async () => {
-    const { runner, perform, notifier } = harness(warned);
-    await runner.sweepLeague("L1", "auto");
+    const { runner, perform, notifier } = harness(warned, "auto");
+    await runner.sweepLeague("L1");
     expect(perform).not.toHaveBeenCalled();
     expect(notifier.propose).toHaveBeenCalledWith(
       expect.objectContaining({ warnings: ["lopsided"] }),
@@ -56,8 +58,8 @@ describe("AgentRunner routing (3-way autonomy policy)", () => {
   });
 
   it("blocked → offers an override (never auto)", async () => {
-    const { runner, perform, notifier } = harness(blocked);
-    await runner.sweepLeague("L1", "auto");
+    const { runner, perform, notifier } = harness(blocked, "auto");
+    await runner.sweepLeague("L1");
     expect(perform).not.toHaveBeenCalled();
     expect(notifier.propose).toHaveBeenCalledWith(
       expect.objectContaining({ blockedReasons: ["protect: Star"] }),
@@ -66,16 +68,16 @@ describe("AgentRunner routing (3-way autonomy policy)", () => {
   });
 
   it("counts a routing failure instead of reporting it as a success (audit #17)", async () => {
-    const { runner, notifier } = harness(allow);
+    const { runner, notifier } = harness(allow, "manual");
     // Make routing fail (manual mode routes via notifier.propose).
     (notifier.propose as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("telegram down"));
-    const out = await runner.sweepLeague("L1", "manual");
+    const out = await runner.sweepLeague("L1");
     expect(out).toMatchObject({ recommended: 1, routed: 0, failed: 1 });
   });
 
   it("resolves player names in the summary", async () => {
-    const { runner, notifier } = harness(allow);
-    await runner.sweepLeague("L1", "auto");
+    const { runner, notifier } = harness(allow, "auto");
+    await runner.sweepLeague("L1");
     const info = (notifier.info as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
     expect(info).toContain("Add Guy");
   });
@@ -101,10 +103,14 @@ describe("AgentRunner routing (3-way autonomy policy)", () => {
 
   it("skips a league with no resolvable roster", async () => {
     const notifier = { propose: vi.fn(), info: vi.fn() } as unknown as Notifier;
-    const ctx = { refresh: vi.fn(async () => {}), pipeline: { evaluate: vi.fn(), perform: vi.fn() } } as unknown as AppContext;
+    const ctx = {
+      refresh: vi.fn(async () => {}),
+      config: { get: () => ({ agent: { enabled: true, autonomy: "auto" } }) },
+      pipeline: { evaluate: vi.fn(), perform: vi.fn() },
+    } as unknown as AppContext;
     const ops = { getMyRoster: async () => null } as unknown as SleepBotOperations;
     const runner = new AgentRunner({ ctx, ops, notifier, gather: async () => [addDrop] });
-    const r = await runner.sweepLeague("L1", "auto");
+    const r = await runner.sweepLeague("L1");
     expect(r.skipped).toMatch(/username/);
     expect(notifier.propose).not.toHaveBeenCalled();
   });

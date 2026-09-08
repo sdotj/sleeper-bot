@@ -37,8 +37,20 @@ export function proposalOutcome(action: ProposedAction) {
       return {
         ...action,
         note:
-          `Proposed as a DRAFT — nothing has been sent. To send it, call execute ` +
-          `with actionId "${action.id}".${warn}`,
+          `Proposed as a DRAFT — nothing has been sent. It waits in the pending-actions ` +
+          `list for you to approve (or execute actionId "${action.id}").${warn}`,
+      };
+    case "executing":
+      return {
+        ...action,
+        note: `IN PROGRESS — this action was claimed for sending and hasn't resolved yet.${warn}`,
+      };
+    case "failed":
+      return {
+        ...action,
+        note:
+          `FAILED — the send did not complete. It was NOT retried automatically; ` +
+          `re-propose it if you still want it.${warn}`,
       };
     default: {
       const exhaustive: never = action.status;
@@ -128,22 +140,19 @@ export class SleepBotOperations {
 
   // --- writes (confirm-by-default via the pipeline) ------------------------
 
-  // Writes refresh cross-instance config/token first (audit #14) so a proposal
-  // or execute never runs against stale leagues or a replaced token.
-  async proposeTrade(leagueId: string, payload: TradePayload) {
-    await this.ctx.refresh();
+  // The pipeline refreshes cross-instance config/token itself on every write
+  // path (audit #14), so all transports — including MCP/Telegram — are covered,
+  // not just this facade.
+  proposeTrade(leagueId: string, payload: TradePayload) {
     return this.ctx.pipeline.propose(leagueId, "trade", payload);
   }
-  async proposeWaiverClaim(leagueId: string, payload: WaiverClaimPayload) {
-    await this.ctx.refresh();
+  proposeWaiverClaim(leagueId: string, payload: WaiverClaimPayload) {
     return this.ctx.pipeline.propose(leagueId, "waiver_claim", payload);
   }
-  async proposeAddDrop(leagueId: string, payload: AddDropPayload) {
-    await this.ctx.refresh();
+  proposeAddDrop(leagueId: string, payload: AddDropPayload) {
     return this.ctx.pipeline.propose(leagueId, "add_drop", payload);
   }
-  async executeAction(actionId: string) {
-    await this.ctx.refresh();
+  executeAction(actionId: string) {
     return this.ctx.pipeline.execute(actionId, "user");
   }
   listPendingActions(leagueId?: string) {
