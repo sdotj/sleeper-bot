@@ -85,6 +85,49 @@ describe("ActionPipeline (manual mode)", () => {
     const { pipe } = pipeline({ mode: "manual" }, adapter);
     await expect(pipe.execute("nope")).rejects.toThrow(/no pending action/);
   });
+
+  it("treats a non-ok write as a failure: audits failed, keeps the draft (audit #8)", async () => {
+    // Adapter reports the write did not land — the pipeline must NOT mark it
+    // executed or remove the pending draft.
+    const executeTrade = vi.fn(async () => ({ ok: false, message: "no transaction" }));
+    const { adapter } = fakeAdapter(executeTrade);
+    const { pipe, pending, audit } = pipeline({ mode: "manual" }, adapter);
+
+    const proposed = await pipe.propose("L1", "trade", trade);
+    await expect(pipe.execute(proposed.id, "user")).rejects.toThrow(/no transaction/);
+
+    expect(await pending.list("L1")).toHaveLength(1); // still re-tryable
+    const events = await audit.list("L1");
+    expect(events.map((e) => e.type)).toContain("failed");
+    expect(events.map((e) => e.type)).not.toContain("executed");
+  });
+
+  it("dispatches a pending action at most once under concurrent execute (audit #4)", async () => {
+    let inFlight = 0;
+    let maxConcurrent = 0;
+    const executeTrade = vi.fn(async () => {
+      inFlight++;
+      maxConcurrent = Math.max(maxConcurrent, inFlight);
+      await new Promise((r) => setTimeout(r, 5));
+      inFlight--;
+      return { ok: true, platformRef: "X1", message: "sent" };
+    });
+    const { adapter } = fakeAdapter(executeTrade);
+    const { pipe, pending } = pipeline({ mode: "manual" }, adapter);
+
+    const proposed = await pipe.propose("L1", "trade", trade);
+    const results = await Promise.allSettled([
+      pipe.execute(proposed.id, "user"),
+      pipe.execute(proposed.id, "user"),
+    ]);
+
+    expect(executeTrade).toHaveBeenCalledOnce();
+    expect(maxConcurrent).toBe(1);
+    const rejected = results.filter((r) => r.status === "rejected");
+    expect(rejected).toHaveLength(1);
+    expect((rejected[0] as PromiseRejectedResult).reason.message).toMatch(/already executing/);
+    expect(await pending.list("L1")).toHaveLength(0);
+  });
 });
 
 describe("ActionPipeline (auto mode)", () => {

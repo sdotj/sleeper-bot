@@ -59,6 +59,12 @@ export class Notifier {
   private static readonly COLLECTION = "agent_outbox";
   private offset = 0;
   private running = false;
+  /**
+   * Proposal ids currently being performed. Telegram re-delivers callback
+   * queries and users double-tap; without this, two taps on the same button
+   * could both read the outbox record and perform the write twice (audit #4).
+   */
+  private readonly inFlight = new Set<string>();
 
   constructor(private readonly deps: NotifierDeps) {}
 
@@ -111,11 +117,19 @@ export class Notifier {
     if (verb === "no") {
       outcome = "❌ Dismissed — nothing sent.";
     } else if (verb === "ok" || verb === "ovr") {
+      // A second tap arriving mid-execute must not perform the write again.
+      if (this.inFlight.has(rec.id)) {
+        await this.deps.telegram.answerCallbackQuery(callbackQueryId, "Already processing…");
+        return;
+      }
+      this.inFlight.add(rec.id);
       try {
         const r = await this.deps.perform(rec.leagueId, rec.kind, rec.payload, { override: verb === "ovr" });
         outcome = r.ok ? `✅ Executed — ${r.message}` : `⚠️ ${r.message}`;
       } catch (err) {
         outcome = `⚠️ Failed — ${(err as Error).message}`;
+      } finally {
+        this.inFlight.delete(rec.id);
       }
     } else {
       outcome = "Unknown action.";

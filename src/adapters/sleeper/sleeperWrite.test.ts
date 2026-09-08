@@ -64,6 +64,31 @@ describe("SleeperWriteClient transport", () => {
     expect(calls[0].init.headers.authorization).toMatch(/^eyJ/);
   });
 
+  it("reports ok:false when the mutation returns no transaction (audit #8)", async () => {
+    // No `errors` array, HTTP 200, but the op key is null — a silent non-write.
+    const fetchFn: FetchFn = async () => ({
+      status: 200,
+      text: async () => JSON.stringify({ data: { create_free_agent: null } }),
+    });
+    const res = await new SleeperWriteClient("L", session(), fetchFn).executeAddDrop({
+      rosterId: 1,
+      addPlayerId: "x",
+    });
+    expect(res.ok).toBe(false);
+    expect(res.platformRef).toBeUndefined();
+    expect(res.message).toMatch(/did not go through/);
+  });
+
+  it("throws on a non-2xx HTTP status even without an errors array (audit #8)", async () => {
+    const fetchFn: FetchFn = async () => ({
+      status: 503,
+      text: async () => JSON.stringify({ data: {} }),
+    });
+    await expect(
+      new SleeperWriteClient("L", session(), fetchFn).executeAddDrop({ rosterId: 1, addPlayerId: "x" }),
+    ).rejects.toThrow(/HTTP 503/);
+  });
+
   it("trips needs-reauth on an unauthorized error (by code)", async () => {
     const s = session();
     const markInvalid = vi.spyOn(s, "markInvalid");

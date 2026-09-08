@@ -6,7 +6,11 @@ const leagueId = { leagueId: { type: "string", description: "The league label fr
 /**
  * The SleepBot operations exposed to Claude in the chat panel — the same
  * catalog every other front-end uses (dec.chat-panel). Writes stay
- * confirm-by-default: propose_* only drafts; execute_action sends.
+ * confirm-by-default AND human-in-the-loop: the chat can only DRAFT (propose_*).
+ * Sending is deliberately NOT a chat tool — the chat loop auto-runs whatever the
+ * model calls, so exposing execute here would let one turn propose-and-send with
+ * no human gate (audit #3). The user confirms a draft in the GUI/MCP client,
+ * which drives the separate execute path.
  */
 export const CHAT_TOOLS: Anthropic.Tool[] = [
   { name: "list_leagues", description: "List configured leagues (no API call).", input_schema: { type: "object", properties: {} } },
@@ -38,11 +42,6 @@ export const CHAT_TOOLS: Anthropic.Tool[] = [
     name: "propose_waiver_claim",
     description: "DRAFT a waiver claim (add/drop + FAAB). Does NOT send it.",
     input_schema: { type: "object", properties: { ...leagueId, rosterId: { type: "number" }, addPlayerId: { type: "string" }, dropPlayerId: { type: "string" }, faabBid: { type: "number" } }, required: ["leagueId", "rosterId", "addPlayerId"] },
-  },
-  {
-    name: "execute_action",
-    description: "SEND a previously-proposed action. Only call after the user has explicitly confirmed they want it sent.",
-    input_schema: { type: "object", properties: { actionId: { type: "string" } }, required: ["actionId"] },
   },
   {
     name: "remember_fact",
@@ -83,7 +82,6 @@ export async function dispatchTool(ops: SleepBotOperations, name: string, input:
       return proposalOutcome(await ops.proposeAddDrop(a.leagueId, { rosterId: a.rosterId, addPlayerId: a.addPlayerId, dropPlayerId: a.dropPlayerId }));
     case "propose_waiver_claim":
       return proposalOutcome(await ops.proposeWaiverClaim(a.leagueId, { rosterId: a.rosterId, addPlayerId: a.addPlayerId, dropPlayerId: a.dropPlayerId, faabBid: a.faabBid }));
-    case "execute_action": return ops.executeAction(a.actionId);
     case "remember_fact": return ops.memory.add(a.text, "model");
     case "forget_fact": { await ops.memory.remove(a.id); return { ok: true, forgotten: a.id }; }
     default: throw new Error(`unknown tool: ${name}`);

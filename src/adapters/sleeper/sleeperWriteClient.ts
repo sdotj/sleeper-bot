@@ -147,7 +147,17 @@ export class SleeperWriteClient {
   }
 
   private toResult(op: string, data: Record<string, unknown>): WriteResult {
-    const txn = (data[op] as TxnResult) ?? {};
+    const txn = data[op] as TxnResult | null | undefined;
+    // A successful mutation echoes back a transaction_id. No error AND no
+    // transaction means the write silently did not land — report it as a
+    // failure rather than a false `ok: true` (audit #8). The pipeline turns a
+    // non-ok result into an audited failure and keeps the action re-tryable.
+    if (!txn || typeof txn !== "object" || !txn.transaction_id) {
+      return {
+        ok: false,
+        message: `${op} returned no transaction — the write did not go through.`,
+      };
+    }
     return {
       ok: true,
       platformRef: txn.transaction_id,
@@ -193,6 +203,11 @@ export class SleeperWriteClient {
         );
       }
       throw new Error(`Sleeper GraphQL error: ${errors.map((e) => e.message).join("; ")}`);
+    }
+    // Even without an `errors` array, a non-2xx HTTP status means the write did
+    // not succeed — don't fall through to a false success (audit #8).
+    if (res.status < 200 || res.status >= 300) {
+      throw new Error(`Sleeper GraphQL HTTP ${res.status}: ${text.slice(0, 200)}`);
     }
     return body.data ?? {};
   }

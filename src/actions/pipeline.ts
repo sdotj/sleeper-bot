@@ -30,6 +30,16 @@ export interface PipelineDeps {
  * executed immediately (still audited); otherwise it waits for `execute`.
  */
 export class ActionPipeline {
+  /**
+   * Action ids currently being executed in THIS process. A stored pending
+   * action must dispatch at most once: two concurrent `execute` calls (a
+   * double-click, a webhook retry) would otherwise both read `status ==
+   * "pending"` and both send before either removes it (audit #4). The guard is
+   * per-process — the JSON store is single-instance and Postgres deploys run
+   * one writer — so an in-memory lock is sufficient.
+   */
+  private readonly inFlight = new Set<string>();
+
   constructor(private readonly deps: PipelineDeps) {}
 
   async propose(leagueId: string, kind: ActionKind, payload: WritePayload): Promise<ProposedAction> {
@@ -82,57 +92,73 @@ export class ActionPipeline {
   }
 
   async execute(actionId: string, actor: "user" | "auto" = "user"): Promise<ProposedAction> {
-    const action = await this.deps.pending.get(actionId);
-    if (!action || action.status !== "pending") {
-      throw new Error(`no pending action with id ${actionId}`);
+    // Claim the action for this process before doing anything, so a second
+    // concurrent execute can't race through the pending-status check (audit #4).
+    if (this.inFlight.has(actionId)) {
+      throw new Error(`action ${actionId} is already executing`);
     }
-    const adapter = this.deps.adapterFor(action.leagueId);
-
-    // Re-validate at execution time — rules or rosters may have changed.
-    const verdict = await this.deps.rules.evaluate(
-      action.kind,
-      action.payload,
-      await this.ruleContext(action.leagueId, adapter, action.kind, action.payload),
-    );
-    if (verdict.decision === "block") {
-      action.status = "rejected";
-      action.verdict = verdict;
-      await this.deps.audit.record({
-        actionId,
-        leagueId: action.leagueId,
-        type: "rejected",
-        actor: "rule",
-        summary: `${action.kind} blocked at execution: ${verdict.blockedReasons.join("; ")}`,
-        detail: verdict,
-      });
-      await this.deps.pending.remove(actionId);
-      throw new Error(`action ${actionId} is now blocked: ${verdict.blockedReasons.join("; ")}`);
-    }
-
+    this.inFlight.add(actionId);
     try {
-      const result = await this.dispatch(adapter, action);
-      action.status = "executed";
-      action.result = { platformRef: result.platformRef, message: result.message };
-      await this.deps.audit.record({
-        actionId,
-        leagueId: action.leagueId,
-        type: "executed",
-        actor,
-        summary: `${action.kind} executed: ${result.message}`,
-        detail: result,
-      });
-      await this.deps.pending.remove(actionId);
-      return action;
-    } catch (err) {
-      await this.deps.audit.record({
-        actionId,
-        leagueId: action.leagueId,
-        type: "failed",
-        actor,
-        summary: `${action.kind} failed: ${(err as Error).message}`,
-        detail: { error: (err as Error).message },
-      });
-      throw err;
+      const action = await this.deps.pending.get(actionId);
+      if (!action || action.status !== "pending") {
+        throw new Error(`no pending action with id ${actionId}`);
+      }
+      const adapter = this.deps.adapterFor(action.leagueId);
+
+      // Re-validate at execution time — rules or rosters may have changed.
+      const verdict = await this.deps.rules.evaluate(
+        action.kind,
+        action.payload,
+        await this.ruleContext(action.leagueId, adapter, action.kind, action.payload),
+      );
+      if (verdict.decision === "block") {
+        action.status = "rejected";
+        action.verdict = verdict;
+        await this.deps.audit.record({
+          actionId,
+          leagueId: action.leagueId,
+          type: "rejected",
+          actor: "rule",
+          summary: `${action.kind} blocked at execution: ${verdict.blockedReasons.join("; ")}`,
+          detail: verdict,
+        });
+        await this.deps.pending.remove(actionId);
+        throw new Error(`action ${actionId} is now blocked: ${verdict.blockedReasons.join("; ")}`);
+      }
+
+      try {
+        const result = await this.dispatch(adapter, action);
+        // A non-ok WriteResult means the platform did not accept the write —
+        // don't mark it executed or remove the draft (audit #8). Routed through
+        // the catch below so it's audited as a failure and stays re-tryable.
+        if (!result.ok) {
+          throw new Error(result.message || `${action.kind} was not accepted by the platform`);
+        }
+        action.status = "executed";
+        action.result = { platformRef: result.platformRef, message: result.message };
+        await this.deps.audit.record({
+          actionId,
+          leagueId: action.leagueId,
+          type: "executed",
+          actor,
+          summary: `${action.kind} executed: ${result.message}`,
+          detail: result,
+        });
+        await this.deps.pending.remove(actionId);
+        return action;
+      } catch (err) {
+        await this.deps.audit.record({
+          actionId,
+          leagueId: action.leagueId,
+          type: "failed",
+          actor,
+          summary: `${action.kind} failed: ${(err as Error).message}`,
+          detail: { error: (err as Error).message },
+        });
+        throw err;
+      }
+    } finally {
+      this.inFlight.delete(actionId);
     }
   }
 
@@ -187,6 +213,10 @@ export class ActionPipeline {
 
     try {
       const result = await this.dispatch(adapter, action);
+      // Guard against a false success from the adapter (audit #8).
+      if (!result.ok) {
+        throw new Error(result.message || `${kind} was not accepted by the platform`);
+      }
       action.status = "executed";
       action.result = { platformRef: result.platformRef, message: result.message };
       await this.deps.audit.record({

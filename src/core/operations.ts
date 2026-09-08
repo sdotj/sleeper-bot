@@ -14,21 +14,37 @@ import type { AppContext } from "./context.js";
  * Shared by the MCP tools and the HTTP api (dec.gui-architecture).
  */
 export function proposalOutcome(action: ProposedAction) {
-  if (action.status === "rejected") {
-    return {
-      ...action,
-      note: `BLOCKED by a rule — nothing was stored or sent. ${action.verdict.blockedReasons.join("; ")}`,
-    };
-  }
   const warn = action.verdict.warnings.length
     ? ` Warnings: ${action.verdict.warnings.join("; ")}.`
     : "";
-  return {
-    ...action,
-    note:
-      `Proposed as a DRAFT — nothing has been sent. To send it, call execute ` +
-      `with actionId "${action.id}".${warn}`,
-  };
+  switch (action.status) {
+    case "rejected":
+      return {
+        ...action,
+        note: `BLOCKED by a rule — nothing was stored or sent. ${action.verdict.blockedReasons.join("; ")}`,
+      };
+    case "executed":
+      // Auto mode executes an unblocked proposal immediately; the note must not
+      // claim it's still a draft awaiting confirmation (audit #9).
+      return {
+        ...action,
+        note:
+          `SENT — this action was executed and is live` +
+          `${action.result?.message ? `: ${action.result.message}` : ""}` +
+          `${action.result?.platformRef ? ` (ref ${action.result.platformRef})` : ""}.${warn}`,
+      };
+    case "pending":
+      return {
+        ...action,
+        note:
+          `Proposed as a DRAFT — nothing has been sent. To send it, call execute ` +
+          `with actionId "${action.id}".${warn}`,
+      };
+    default: {
+      const exhaustive: never = action.status;
+      return { ...action, note: `Unknown action status: ${String(exhaustive)}.` };
+    }
+  }
 }
 
 /**
