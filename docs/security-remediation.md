@@ -74,12 +74,19 @@ just the ops facade); the Telegram outbox retains records on ambiguous failure
 and unknown verbs; the Sleeper self-user lookup no longer caches a transient
 failure as a permanent null; the ChatPane loading/navigation race is closed.
 
+### Deferred-item progress
+
+- ✅ **Execution preconditions** — `src/actions/preconditions.ts` re-fetches the
+  current rosters at execute/perform time and blocks an action that has gone
+  stale: sending/dropping a player the roster no longer owns, or adding a player
+  who is already rostered. Platform-agnostic (works off normalized `Roster`).
+  FAAB affordability is left to the platform (an over-bid is now surfaced as a
+  clean failure, not a false success).
+
 **Still deferred (documented single-writer constraint):** true multi-writer
 safety needs a store-atomic compare-and-set claim and append-only history — the
-per-process locks/version stamp are single-instance only. `execute` validates
-request shape, not live roster ownership/affordability (that needs a shared
-execution-precondition service). DB-side pagination and a CI workflow remain
-open. None block a single-instance deploy.
+per-process locks/version stamp are single-instance only. DB-side pagination and
+a CI workflow remain open. None block a single-instance deploy.
 
 ## Deferred (architecture, not vulnerabilities)
 

@@ -14,6 +14,7 @@ import { RulesEngine, type ActionKind, type RuleContext, type RuleVerdict } from
 import type { ActionIdentity, ProposedAction } from "./ProposedAction.js";
 import type { PendingStore } from "./pendingStore.js";
 import { validateWritePayload } from "./writeSchemas.js";
+import { checkPreconditions } from "./preconditions.js";
 
 export interface PipelineDeps {
   rules: RulesEngine;
@@ -179,6 +180,24 @@ export class ActionPipeline {
         throw new Error(`action ${actionId} is now blocked: ${verdict.blockedReasons.join("; ")}`);
       }
 
+      // Execution preconditions: re-fetch the CURRENT rosters and confirm the
+      // action is still valid against them (ownership/availability). The rules
+      // engine doesn't do this — an approved action can go stale.
+      const pre = checkPreconditions(action.kind, action.payload, await adapter.getRosters());
+      if (!pre.ok) {
+        action.status = "rejected";
+        await this.deps.audit.record({
+          actionId,
+          leagueId: action.leagueId,
+          type: "rejected",
+          actor: "rule",
+          summary: `${action.kind} failed a precondition at execution: ${pre.reasons.join("; ")}`,
+          detail: { reasons: pre.reasons },
+        });
+        await this.deps.pending.put(action);
+        throw new Error(`action ${actionId} can't be sent: ${pre.reasons.join("; ")}`);
+      }
+
       // DURABLE CLAIM before dispatch (audit #3): persist "executing" + a stable
       // execution id. If the process dies (or a later write fails) after the
       // platform accepts, the record is no longer "pending", so a retry refuses
@@ -310,6 +329,21 @@ export class ActionPipeline {
         actor: "rule",
         summary: `${kind} blocked: ${verdict.blockedReasons.join("; ")}`,
         detail: verdict,
+      });
+      return action;
+    }
+
+    // Execution preconditions against the CURRENT rosters (see execute()).
+    const pre = checkPreconditions(kind, payload, await adapter.getRosters());
+    if (!pre.ok) {
+      action.status = "rejected";
+      await this.deps.audit.record({
+        actionId: action.id,
+        leagueId,
+        type: "rejected",
+        actor: "rule",
+        summary: `${kind} failed a precondition: ${pre.reasons.join("; ")}`,
+        detail: { reasons: pre.reasons },
       });
       return action;
     }
