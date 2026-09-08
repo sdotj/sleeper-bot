@@ -30,7 +30,7 @@ export const CHAT_TOOLS: Anthropic.Tool[] = [
   { name: "list_pending_actions", description: "Proposed actions awaiting confirmation.", input_schema: { type: "object", properties: { leagueId: { type: "string" } } } },
   {
     name: "propose_trade",
-    description: "DRAFT a trade (runs rules). Does NOT send it. Returns an actionId to confirm later.",
+    description: "DRAFT a trade (runs rules). Does NOT send it. Tell the user it's a draft they approve in the app's pending-actions list; you cannot send it from chat.",
     input_schema: { type: "object", properties: { ...leagueId, fromRosterId: { type: "number" }, toRosterId: { type: "number" }, sendPlayerIds: { type: "array", items: { type: "string" } }, receivePlayerIds: { type: "array", items: { type: "string" } } }, required: ["leagueId", "fromRosterId", "toRosterId", "sendPlayerIds", "receivePlayerIds"] },
   },
   {

@@ -98,9 +98,22 @@ fly secrets set \
   ANTHROPIC_API_KEY=sk-ant-... \
   SLEEPER_TOKEN=eyJ... \
   SLEEPBOT_KTC_MODE=oqb \
-  SLEEPBOT_CONFIG_JSON='{"leagues":[{"id":"my-main-league","platform":"sleeper","sleeper":{"leagueId":"...","username":"..."}}]}'
+  SLEEPBOT_CONFIG_JSON='{"leagues":[{"id":"my-main-league","platform":"sleeper","sleeper":{"leagueId":"...","username":"..."}}]}' \
+  SLEEPBOT_RULES_JSON='{"mode":"manual","protect":[]}' \
+  `# --- login gate (REQUIRED for a public deploy; the service binds 0.0.0.0) ---` \
+  SLEEPBOT_AUTH_USER=sam \
+  SLEEPBOT_AUTH_PASSWORD_HASH="$(npm run --silent hash-password -- 'your-password')" \
+  SLEEPBOT_JWT_SECRET="$(openssl rand -hex 32)" \
+  SLEEPBOT_REQUIRE_AUTH=true
 fly deploy
 ```
+
+> ⚠️ The three `SLEEPBOT_AUTH_*` vars **and** `SLEEPBOT_REQUIRE_AUTH=true` above are
+> not optional for a public Fly deploy — without them the API binds `0.0.0.0` with
+> no login gate and anyone with the URL can drive it (and spend your Anthropic
+> budget). `SLEEPBOT_REQUIRE_AUTH=true` makes the container refuse to start if the
+> gate isn't fully set, so a typo can't silently expose it. Verify after deploy:
+> `curl https://<app>.fly.dev/api/leagues` must return `401 {"code":"auth_required"}`.
 
 Minimal `fly.toml`:
 
@@ -114,9 +127,9 @@ primary_region = "iad"
 [http_service]
   internal_port = 8787
   force_https = true
-  auto_stop_machines = false   # keep it always-on for the (coming) autonomous loop
+  auto_stop_machines = false   # keep it always-on for the autonomous loop
   auto_start_machines = true
-  min_machines_running = 1
+  min_machines_running = 1     # and `fly scale count 1` — single writer (see Notes)
 
 [[http_service.checks]]
   path = "/api/health"
@@ -157,7 +170,7 @@ openssl rand -hex 32 | tr -d '\n' | gcloud secrets create secret-key --data-file
 # 2. First deploy (URL is only known after this):
 gcloud run deploy sleepbot --source . --region us-central1 --allow-unauthenticated \
   --set-secrets ANTHROPIC_API_KEY=anthropic-key:latest,TELEGRAM_BOT_TOKEN=tg-bot-token:latest,DATABASE_URL=database-url:latest,SLEEPBOT_INTERNAL_SECRET=internal-secret:latest,SLEEPBOT_CONFIG_JSON=config-json:latest,SLEEPBOT_RULES_JSON=rules-json:latest,SLEEPBOT_AUTH_PASSWORD_HASH=auth-hash:latest,SLEEPBOT_JWT_SECRET=jwt-secret:latest,SLEEPBOT_SECRET_KEY=secret-key:latest \
-  --set-env-vars TELEGRAM_CHAT_ID=123456789,SLEEPBOT_KTC_MODE=oqb,SLEEPBOT_AUTH_USER=sam
+  --set-env-vars TELEGRAM_CHAT_ID=123456789,SLEEPBOT_KTC_MODE=oqb,SLEEPBOT_AUTH_USER=sam,SLEEPBOT_REQUIRE_AUTH=true
 
 # 3. Re-deploy with the now-known URL so the agent registers its webhook:
 gcloud run services update sleepbot --region us-central1 \
@@ -192,7 +205,12 @@ only hard requirements are a reachable Postgres and the container's port exposed
 ## Notes
 
 - **Always-on:** keep at least one instance running (`min_machines_running = 1`)
-  — the autonomous manager (next feature) needs a persistent process.
-- **Scaling:** the API is stateless beyond Postgres, so you can run multiple
-  instances behind the load balancer; the JSON-file store is single-instance only.
+  — the autonomous manager needs a persistent process.
+- **Run a single writer.** Reads are stateless beyond Postgres, but the write path
+  is **not** yet safe to run on multiple instances: the action-execution locks,
+  the Telegram poll loop, and the config version stamp are per-process, not
+  store-atomic. Run **one** instance for now (Fly `min/max = 1`; Cloud Run
+  `--max-instances=1`). Horizontal write scaling needs a store-level compare-and-set
+  claim and append-only history first — do not put two writers behind a load
+  balancer. The JSON-file store is single-instance regardless.
 - **Health check:** `GET /api/health` returns `{ "ok": true }`.

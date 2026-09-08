@@ -29,7 +29,12 @@ export const warnRuleSchema = z.object({
 });
 
 export const rulesConfigSchema = z.object({
-  /** manual = approve every action; auto = execute anything that passes blocks. */
+  /**
+   * DEPRECATED / no-op. Proposal creation is always draft-only now (audit #1);
+   * nothing here auto-sends. Automation is per-league via `agent.autonomy`
+   * (manual → approve on Telegram; auto → the agent executes clean moves). Kept
+   * only so existing rules files still parse.
+   */
   mode: z.enum(["manual", "auto"]).default("manual"),
   protect: z.array(protectRuleSchema).default([]),
   warn: z.array(warnRuleSchema).default([]),

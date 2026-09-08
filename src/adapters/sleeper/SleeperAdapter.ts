@@ -388,7 +388,12 @@ export class SleeperAdapter implements WriteableLeagueAdapter {
       this.selfUserIdPromise = this.client
         .getUserByName(this.username)
         .then((u) => (u?.user_id as string) ?? null)
-        .catch(() => null);
+        .catch(() => {
+          // A transient lookup failure must NOT be cached as a permanent null —
+          // clear the memo so the next call retries (audit #15).
+          this.selfUserIdPromise = undefined;
+          return null;
+        });
     }
     return this.selfUserIdPromise;
   }

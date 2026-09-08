@@ -90,17 +90,20 @@ are flagged with `isYou`, so SleepBot knows which team is yours without asking.
 | `propose_trade` | Draft a trade (runs rules); returns a draft, never sends |
 | `propose_waiver_claim` | Draft a waiver claim (add/drop + FAAB); draft only |
 | `propose_add_drop` | Draft a free-agent add/drop; draft only |
-| `execute_action` | Send a previously-proposed action, by actionId (explicit confirm) |
+| `execute_action` | Send a previously-proposed action, by actionId — **MCP only** (a human-in-the-loop client). The chat panel and HTTP API cannot send from a proposal; approval is a separate, explicit step |
 | `list_pending_actions` | Drafts awaiting confirmation |
 | `get_auth_status` | Whether writes are authorized (`ok` / `needs-reauth`) + token expiry |
 
-Nothing changes your league silently: a `propose_*` tool returns a **draft**;
-`execute_action` is the explicit send. Guardrails live in `config/rules.json`
+Nothing changes your league silently: a `propose_*` tool ALWAYS returns a
+**draft** and never dispatches. Sending is a separate, explicit step — the web
+app's **Pending approvals** list (Activity page), a Telegram tap, or the MCP
+`execute_action` tool. Guardrails live in `config/rules.json`
 (copy `config/rules.example.json`):
 
 ```jsonc
 {
-  "mode": "manual",                 // "manual" = approve each; "auto" = send anything unblocked
+  "mode": "manual",                 // DEPRECATED / no-op: proposals are always drafts.
+                                    // Automation is per-league via `agent.autonomy`.
   "protect": [                      // hard blocks
     { "playerName": "Ja'Marr Chase", "actions": ["trade", "drop"] }
   ],

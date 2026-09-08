@@ -19,6 +19,26 @@ export type ChatRunner = (
 /** Generates a thread title; injectable for offline tests. */
 export type Titler = (userMsg: string, reply: string) => Promise<string | null>;
 
+/**
+ * Per-conversation in-process mutex (audit #6). The model call runs unlocked
+ * (concurrency preserved), but the read-modify-write that appends the turn is
+ * serialized per conversation, so two concurrent turns can't each save a stale
+ * snapshot and lose the other's messages. Single-process only — a multi-writer
+ * deploy needs append-only rows or a transaction (see docs/deploy.md).
+ */
+const convoLocks = new Map<string, Promise<void>>();
+async function withConvoLock<T>(id: string, fn: () => Promise<T>): Promise<T> {
+  while (convoLocks.has(id)) await convoLocks.get(id);
+  let release!: () => void;
+  convoLocks.set(id, new Promise<void>((r) => (release = r)));
+  try {
+    return await fn();
+  } finally {
+    convoLocks.delete(id);
+    release();
+  }
+}
+
 export interface PersistedTurnInput {
   conversationId?: string;
   message: string;
@@ -64,21 +84,25 @@ export async function runPersistedTurn(
     if (title) convo.title = title;
   }
 
-  const now = Date.now();
-  const userTurn = { role: "user" as const, content: message, at: now };
-  const assistantTurn = { role: "assistant" as const, content: reply, at: now };
+  const userTurn = { role: "user" as const, content: message, at: Date.now() };
+  const assistantTurn = { role: "assistant" as const, content: reply, at: Date.now() };
 
-  // Append to the FRESHEST stored copy, re-read right before the write, rather
-  // than to the snapshot we loaded before the (multi-second) model call. Two
-  // concurrent turns on the same thread would otherwise each save their own
-  // pre-call snapshot and lose the other's messages (audit #13). This narrows
-  // the window to the local read-modify-write; a fully lost-update-proof store
-  // needs append-only message rows or a compare-and-set put.
-  const target = existing ? ((await history.get(convo.id)) ?? convo) : convo;
-  target.messages.push(userTurn, assistantTurn);
-  target.updatedAt = now;
-  if (convo.title && !target.title) target.title = convo.title;
-  await history.save(target);
-
-  return { conversationId: target.id, reply, toolCalls };
+  // Serialize the append PER CONVERSATION (audit #6/#13). Inside the lock we
+  // re-read the freshest stored copy and append to THAT, so concurrent turns on
+  // one thread each build on the other's write instead of clobbering it.
+  return withConvoLock(convo.id, async () => {
+    let target = convo;
+    if (existing) {
+      const fresh = await history.get(convo.id);
+      // Deleted mid-turn → do NOT resurrect it (audit #6); the reply is already
+      // returned to the caller, it just isn't persisted to a gone thread.
+      if (!fresh) return { conversationId: convo.id, reply, toolCalls };
+      target = fresh;
+    }
+    target.messages.push(userTurn, assistantTurn);
+    target.updatedAt = Date.now();
+    if (convo.title && !target.title) target.title = convo.title;
+    await history.save(target);
+    return { conversationId: target.id, reply, toolCalls };
+  });
 }

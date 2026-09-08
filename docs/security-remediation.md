@@ -51,6 +51,36 @@ passes the Cairn gate.
   listening; we run `vitest run`. Upgrading is a breaking major with no
   production exposure, so it's deferred rather than forced.
 
+## Second-pass audit (Sept 8, 2026)
+
+A follow-up audit found several first-pass fixes narrowed races rather than
+closing them. Addressed:
+
+| # | Finding | Status | Where |
+|---|---------|--------|-------|
+| 1 | Chat still auto-sent in global `auto` mode | ✅ Fixed | `pipeline.propose` is draft-only; `rules.mode` is now a no-op |
+| 2 | Notifier lock released before durable delete | ✅ Fixed | claim held through `store.delete` |
+| 3 | Post-send storage failure could resend | ✅ Fixed | durable executing/executed/failed states + stable executionId |
+| 4 | Refreshed settings didn't revoke agent auto | ✅ Fixed | sweep/route read enabled+autonomy fresh, fail closed |
+| 5 | League remap could redirect a pending action | ✅ Fixed | actions bound to platform/league/roster; execute + outbox verify |
+| 6 | Concurrent chat turns still overwrote | ✅ Fixed | per-conversation mutex; no resurrect of a deleted thread |
+| 7 | Version stamp collisions (Date.now) | ✅ Fixed | store-read increment + equality comparison |
+| 8 | GUI approval workflow didn't exist | ✅ Fixed | Pending approvals list + execute/cancel API + buttons |
+| 9 | Failed auto writes reported as success | ✅ Fixed | typed route outcomes; status-checked notifications |
+| 10 | Deploy examples allowed an open API | ✅ Fixed | Fly/Cloud Run examples require auth + `SLEEPBOT_REQUIRE_AUTH`; single-writer documented |
+
+Also: the pipeline refreshes on every write path (covering MCP/Telegram, not
+just the ops facade); the Telegram outbox retains records on ambiguous failure
+and unknown verbs; the Sleeper self-user lookup no longer caches a transient
+failure as a permanent null; the ChatPane loading/navigation race is closed.
+
+**Still deferred (documented single-writer constraint):** true multi-writer
+safety needs a store-atomic compare-and-set claim and append-only history — the
+per-process locks/version stamp are single-instance only. `execute` validates
+request shape, not live roster ownership/affordability (that needs a shared
+execution-precondition service). DB-side pagination and a CI workflow remain
+open. None block a single-instance deploy.
+
 ## Deferred (architecture, not vulnerabilities)
 
 - One generated operation catalog shared by MCP/chat/agent/HTTP (the audit's

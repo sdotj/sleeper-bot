@@ -86,11 +86,14 @@ export function ChatPane() {
     setMessages([]);
     setInput("");
     setError(null);
+    setLoadingThread(false); // a pending openConvo's finally won't fire for the new view (audit #16)
   }
 
   async function send() {
     const text = input.trim();
-    if (!text || busy) return;
+    // Don't send while a thread is still loading — a late history response could
+    // otherwise replace the turn we just added (audit #16).
+    if (!text || busy || loadingThread) return;
     const token = viewToken.current; // the thread this send belongs to
     const sentConvoId = activeId ?? undefined;
     setMessages((m) => [...m, { role: "user", content: text }]);
@@ -236,7 +239,7 @@ export function ChatPane() {
           <Button
             variant="primary"
             onClick={() => void send()}
-            disabled={busy || !input.trim()}
+            disabled={busy || loadingThread || !input.trim()}
           >
             Send
           </Button>
