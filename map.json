@@ -1613,6 +1613,7 @@
       "files": [
         "web/src/App.tsx",
         "web/src/components/layout/Header.tsx",
+        "web/src/components/layout/HeaderMenu.tsx",
         "web/src/components/ui/Badge.tsx",
         "web/src/components/ui/Card.tsx",
         "web/src/components/ui/DataTable.tsx",

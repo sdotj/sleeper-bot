@@ -145,9 +145,9 @@ export function Bubble({
   return (
     <div
       className={cn(
-        "w-full max-w-full md:max-w-[520px] whitespace-pre-wrap break-words rounded-[16px] px-4 py-[11px] text-[13.5px] leading-[17px]",
+        "w-full max-w-[85%] md:max-w-[520px] whitespace-pre-wrap break-words rounded-[16px] px-4 py-[11px] text-[13.5px] leading-[17px]",
         role === "user"
-          ? "self-start bg-accent text-on-accent"
+          ? "self-end bg-accent text-on-accent"
           : "self-start bg-surface-2",
         muted && "text-muted",
       )}

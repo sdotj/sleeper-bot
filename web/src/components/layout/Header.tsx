@@ -1,7 +1,8 @@
 import { api, useAsync } from "../../lib/api";
 import { cycleTheme, useTheme } from "../../lib/theme";
 import type { League } from "../../lib/types";
-import { Button, Select } from "../ui";
+import { Button } from "../ui";
+import { HeaderMenu } from "./HeaderMenu";
 
 /** Account controls remain available without crowding the mockup's header. */
 export function Header({
@@ -29,18 +30,36 @@ export function Header({
       </div>
       <div className="flex min-w-0 items-center gap-2.5">
         {active && (
-          <Select
-            aria-label="League"
-            className="h-8! min-w-0 max-w-[190px] text-[13px]"
-            value={active}
-            onChange={(e) => onSelect(e.target.value)}
+          <HeaderMenu
+            label="League"
+            trigger={
+              <>
+                <span className="truncate">{active}</span>
+                <span aria-hidden="true" className="text-faint">
+                  ▾
+                </span>
+              </>
+            }
+            triggerClassName="flex h-8 max-w-[190px] items-center gap-2 rounded-[9px] border border-border bg-surface-2 px-3 text-[13px]"
           >
-            {leagues.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.id}
-              </option>
-            ))}
-          </Select>
+            {(close) =>
+              leagues.map((league) => (
+                <button
+                  key={league.id}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={league.id === active}
+                  onClick={() => {
+                    onSelect(league.id);
+                    close();
+                  }}
+                  className={`rounded-lg px-3 py-2 text-left text-[13px] hover:bg-surface-2 ${league.id === active ? "bg-accent-tint font-semibold text-accent" : "text-text"}`}
+                >
+                  {league.id}
+                </button>
+              ))
+            }
+          </HeaderMenu>
         )}
         {status && (
           <span
@@ -54,18 +73,30 @@ export function Header({
               : "writes: needs-reauth"}
           </span>
         )}
-        <details className="relative shrink-0">
-          <summary
-            aria-label="Account and appearance"
-            className="flex size-8 cursor-pointer list-none items-center justify-center rounded-full bg-accent text-[13px] font-bold text-on-accent [&::-webkit-details-marker]:hidden"
-          >
-            {status?.user?.slice(0, 1).toUpperCase() || "S"}
-          </summary>
-          <div className="absolute right-0 top-10 z-40 flex w-44 flex-col gap-2 rounded-xl border border-border bg-surface p-3 shadow-lg">
-            <Button onClick={cycleTheme}>Theme: {theme}</Button>
-            {onLogout && <Button onClick={onLogout}>Log out</Button>}
-          </div>
-        </details>
+        <HeaderMenu
+          label="Account and appearance"
+          trigger={status?.user?.slice(0, 1).toUpperCase() || "S"}
+          triggerClassName="flex size-8 shrink-0 items-center justify-center rounded-full bg-accent text-[13px] font-bold text-on-accent"
+        >
+          {(close) => (
+            <>
+              <Button role="menuitem" onClick={cycleTheme}>
+                Theme: {theme}
+              </Button>
+              {onLogout && (
+                <Button
+                  role="menuitem"
+                  onClick={() => {
+                    close();
+                    onLogout();
+                  }}
+                >
+                  Log out
+                </Button>
+              )}
+            </>
+          )}
+        </HeaderMenu>
       </div>
     </header>
   );

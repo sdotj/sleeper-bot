@@ -66,3 +66,5 @@
 - scan: nodes=27, findings=22, errors=0
 - scan: nodes=27, findings=22, errors=0
 - scan: nodes=27, findings=22, errors=0
+- scan: nodes=27, findings=22, errors=0
+- scan: nodes=27, findings=22, errors=0

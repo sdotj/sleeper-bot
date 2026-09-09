@@ -145,20 +145,21 @@ function Dashboard({ loggedIn }: { loggedIn: boolean }) {
       const s = name as TeamSection;
       setPage(null);
       setSection(s);
-      // Instant jump to a live-computed target (native smooth scroll and
-      // scrollIntoView are unreliable in some preview browsers). setTimeout(0)
-      // lets TeamView mount when coming from a standalone page; the resulting
-      // scroll event lets the spy confirm the active section.
+      // Wait for the dashboard and pinned cards to be visible before measuring.
       setTimeout(() => {
         const el = document.getElementById(sectionDomId(s));
         if (el)
-          window.scrollTo(
-            0,
-            el.getBoundingClientRect().top +
+          window.scrollTo({
+            top:
+              el.getBoundingClientRect().top +
               window.scrollY -
               headerHeight() -
               12,
-          );
+            behavior: window.matchMedia("(prefers-reduced-motion: reduce)")
+              .matches
+              ? "auto"
+              : "smooth",
+          });
       }, 0);
     } else {
       setPage(name as Page);
@@ -182,6 +183,9 @@ function Dashboard({ loggedIn }: { loggedIn: boolean }) {
           {active && (
             <div className="px-4 sm:px-7">
               <Nav active={activeTab} onSelect={onTab} />
+              <div hidden={!onTeam}>
+                <Kpis key={active} leagueId={active} />
+              </div>
             </div>
           )}
         </div>
@@ -190,7 +194,6 @@ function Dashboard({ loggedIn }: { loggedIn: boolean }) {
       <main className="px-4 pb-7 sm:px-7">
         {active && (
           <div key={`team:${active}`} hidden={!onTeam}>
-            <Kpis leagueId={active} />
             <TeamView leagueId={active} refs={refs} />
           </div>
         )}
@@ -206,8 +209,8 @@ function Dashboard({ loggedIn }: { loggedIn: boolean }) {
           (onTeam ? null : page === "Draft" ? (
             activeLeague?.capabilities && !activeLeague.capabilities.draft ? (
               <div className="rounded-xl border border-border bg-surface p-6 text-sm text-muted">
-                Drafts aren’t available for {activeLeague.platform} leagues — the platform
-                doesn’t expose a draft API SleepBot can read.
+                Drafts aren’t available for {activeLeague.platform} leagues —
+                the platform doesn’t expose a draft API SleepBot can read.
               </div>
             ) : (
               <DraftView key={active} leagueId={active} />

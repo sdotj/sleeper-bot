@@ -22,3 +22,11 @@ Design context inspected for Dashboard Dark/Light, Team Page Dark, Chat Dark, Se
 
 ## Data limitations
 The current domain/API does not provide separate manager names, player projections or opponents, standings streaks, waiver priority/FAAB balance, draft countdown, or chat memory-update events. The UI uses real existing data and explicit unavailable values where necessary. No sample statistics or simulated timers were added to production. Draft controls, authentication, settings saves and chat operations remain connected to the existing API. Live write actions were not exercised during visual QA.
+
+## Interaction refinements
+- Dashboard summary cards now share the sticky navigation container. Browser checks at scrollY 747 kept its bottom at 275px and the Standings heading at 287px (12px clear).
+- Dashboard tabs smoothly scroll with the measured sticky offset; reduced-motion users retain immediate navigation. Observed an intermediate scrollY of 527 before settling at 747.
+- User chat bubbles align to the right, assistants to the left; mobile bubbles leave 15% of the available width clear.
+- Custom league menu opens 8px below its trigger. Selecting SecondLeague updated the trigger and dismissed the menu in the isolated preview.
+- Account menu closes on outside clicks and Escape; Escape restores focus to its trigger. Both menus share keyboard navigation and dismissal logic.
+- Production build, frontend TypeScript, and all 173 tests pass (one existing integration test skipped). Cairn scan reports no errors and all hooks pass, with the same 21 existing contract warnings.
